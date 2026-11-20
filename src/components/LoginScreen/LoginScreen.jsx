@@ -1,16 +1,20 @@
 import { useState } from 'react'
-import { Mail, RotateCcw } from 'lucide-react'
+import { Mail, RotateCcw, UserPlus, LogIn } from 'lucide-react'
 import toptopLogo from '../../assets/toptop-logo.png'
 import './LoginScreen.css'
 
-export default function LoginScreen({ onReplaySplash }) {
+export default function LoginScreen({ onReplaySplash, onOpenRegistration, onOpenIdLogin }) {
   const [toastMessage, setToastMessage] = useState('')
 
-  const handleAction = (provider) => {
-    setToastMessage(`Connecting with ${provider}...`)
+  const showToast = (message) => {
+    setToastMessage(message)
     setTimeout(() => {
       setToastMessage('')
     }, 3000)
+  }
+
+  const handleAction = (provider) => {
+    showToast(`Connecting with ${provider}...`)
   }
 
   return (
@@ -56,14 +60,13 @@ export default function LoginScreen({ onReplaySplash }) {
 
       {/* Action Buttons Section */}
       <div className="login-actions-section">
-        {/* Sign in with Apple */}
+        {/* Sign in with Apple - Fixed Pixel-Perfect SVG Logo */}
         <button
           className="btn-apple"
           onClick={() => handleAction('Apple')}
         >
-          {/* Apple Logo SVG */}
-          <svg width="17" height="20" viewBox="0 0 170 170" fill="currentColor">
-            <path d="M150.37 130.25c-2.45 5.66-5.35 10.87-8.71 15.66-4.58 6.53-8.33 11.05-11.22 13.56-4.48 4.12-9.28 6.23-14.42 6.35-3.69 0-8.14-1.05-13.32-3.18-5.19-2.12-9.97-3.17-14.34-3.17-4.58 0-9.49 1.05-14.75 3.17-5.26 2.13-9.5 3.24-12.74 3.35-4.35.13-9.16-1.9-14.42-6.08-3.7-3.04-7.69-7.85-11.97-14.44-6.3-9.74-11.2-20.91-14.7-33.51-3.5-12.61-5.25-24.16-5.25-34.66 0-14.36 3.65-26.04 10.96-35.02 7.3-8.99 16.51-13.57 27.63-13.76 4.79 0 10.23 1.25 16.33 3.75 6.1 2.5 10.15 3.8 12.16 3.9 1.63 0 5.86-1.35 12.68-4.04 6.82-2.69 12.62-3.88 17.4-3.58 13.51.76 24.36 5.68 32.55 14.76-11.75 7.12-17.5 16.9-17.26 29.35.25 10.13 4.11 18.52 11.59 25.17 7.48 6.64 16.29 10.37 26.43 11.19-2.22 6.81-4.8 13.43-7.75 19.86zM119.22 33.64c0-7.39 2.68-14.41 8.04-21.07 5.36-6.66 12.01-10.98 19.95-12.97.66 1.77.99 3.55.99 5.34 0 7.39-2.78 14.46-8.34 21.21-5.56 6.75-12.19 11.02-19.89 12.82-.25-1.78-.75-3.56-.75-5.33z" />
+          <svg width="16" height="20" viewBox="0 0 384 512" fill="currentColor">
+            <path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"/>
           </svg>
           <span>Sign in with Apple</span>
         </button>
@@ -94,11 +97,11 @@ export default function LoginScreen({ onReplaySplash }) {
         <div className="or-line" />
       </div>
 
-      {/* Circular Social Buttons Row */}
+      {/* Circular Buttons Row: Facebook | Registration Form | Login Form | Snapchat */}
       <div className="social-circle-row">
-        {/* Facebook */}
+        {/* 1. Facebook */}
         <button
-          className="circle-btn circle-btn-facebook"
+          className="circle-btn"
           onClick={() => handleAction('Facebook')}
           title="Sign in with Facebook"
         >
@@ -107,29 +110,27 @@ export default function LoginScreen({ onReplaySplash }) {
           </svg>
         </button>
 
-        {/* Mobile / Phone */}
+        {/* 2. Registration Form (Welcome to TopTop screen) */}
         <button
-          className="circle-btn circle-btn-phone"
-          onClick={() => handleAction('Phone SMS')}
-          title="Sign in with Phone"
+          className="circle-btn circle-btn-register"
+          onClick={onOpenRegistration}
+          title="Registration Form"
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="#22c55e">
-            <path d="M6.62 10.79a15.053 15.053 0 006.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
-          </svg>
+          <UserPlus size={21} />
         </button>
 
-        {/* ID Login */}
+        {/* 3. Login Form (TopTop ID Login screen) */}
         <button
-          className="circle-btn circle-btn-id"
-          onClick={() => handleAction('TopTop ID')}
-          title="Sign in with TopTop ID"
+          className="circle-btn circle-btn-login"
+          onClick={onOpenIdLogin}
+          title="Login Form"
         >
-          <span>ID</span>
+          <LogIn size={21} />
         </button>
 
-        {/* Snapchat */}
+        {/* 4. Snapchat */}
         <button
-          className="circle-btn circle-btn-snapchat"
+          className="circle-btn"
           onClick={() => handleAction('Snapchat')}
           title="Sign in with Snapchat"
         >

@@ -1,0 +1,251 @@
+.reg-screen-container {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 100vh;
+  min-height: 100dvh;
+  width: 100%;
+  background: #ffffff;
+  color: #18181b;
+  padding: 20px 24px 28px 24px;
+  box-sizing: border-box;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  user-select: none;
+  position: relative;
+  overflow-y: auto;
+}
+
+/* Top Navigation Bar */
+.reg-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 40px;
+}
+
+.reg-back-btn {
+  background: transparent;
+  border: none;
+  color: #18181b;
+  cursor: pointer;
+  padding: 8px;
+  margin-left: -8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background 0.15s ease;
+}
+
+.reg-back-btn:hover {
+  background: #f4f4f5;
+}
+
+/* Page Title */
+.reg-title {
+  font-size: 20px;
+  font-weight: 800;
+  color: #18181b;
+  text-align: center;
+  margin: 4px 0 24px 0;
+  letter-spacing: -0.3px;
+}
+
+/* Avatar Upload Circle */
+.avatar-upload-wrapper {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 28px;
+}
+
+.avatar-upload-circle {
+  width: 110px;
+  height: 110px;
+  border-radius: 50%;
+  background: #f1f4f8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  position: relative;
+  transition: transform 0.15s ease, background 0.15s ease;
+  overflow: hidden;
+}
+
+.avatar-upload-circle:hover {
+  background: #e6ebf2;
+  transform: scale(1.02);
+}
+
+.avatar-plus-icon {
+  color: #14d3be;
+  stroke-width: 2.5;
+}
+
+.avatar-preview-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Form Body */
+.reg-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  flex: 1;
+}
+
+.reg-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.reg-field-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #71717a;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.label-required-asterisk {
+  color: #f43f5e;
+  font-weight: 700;
+}
+
+/* Pill Inputs */
+.reg-pill-input {
+  width: 100%;
+  background: #f6f7f9;
+  border: 1.5px solid transparent;
+  color: #18181b;
+  font-size: 15px;
+  font-weight: 600;
+  padding: 14px 20px;
+  border-radius: 24px;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.reg-pill-input:focus {
+  background: #ffffff;
+  border-color: #14d3be;
+  box-shadow: 0 0 0 3px rgba(20, 211, 190, 0.12);
+}
+
+.reg-pill-input::placeholder {
+  color: #a1a1aa;
+  font-weight: 400;
+}
+
+/* Gender Selector Row */
+.gender-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.gender-pill-btn {
+  border: 2px solid transparent;
+  padding: 13px 0;
+  border-radius: 24px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: transform 0.1s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.gender-pill-btn:active {
+  transform: scale(0.97);
+}
+
+.gender-pill-male {
+  background: #e2f5fe;
+  color: #0284c7;
+}
+
+.gender-pill-male.active {
+  background: #d0effd;
+  border-color: #0284c7;
+  box-shadow: 0 2px 10px rgba(2, 132, 199, 0.2);
+}
+
+.gender-pill-female {
+  background: #fef0f5;
+  color: #ec4899;
+}
+
+.gender-pill-female.active {
+  background: #fde2ee;
+  border-color: #ec4899;
+  box-shadow: 0 2px 10px rgba(236, 72, 153, 0.2);
+}
+
+/* Age Dropdown */
+.age-dropdown-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.age-select-input {
+  appearance: none;
+  cursor: pointer;
+  padding-right: 42px;
+}
+
+.dropdown-arrow-icon {
+  position: absolute;
+  right: 18px;
+  color: #a1a1aa;
+  pointer-events: none;
+}
+
+/* Bottom Action & Disclaimer */
+.reg-bottom-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  margin-top: 36px;
+}
+
+.reg-next-btn {
+  width: 100%;
+  background: #14d3be;
+  border: none;
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 700;
+  padding: 15px 0;
+  border-radius: 26px;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(20, 211, 190, 0.35);
+  transition: transform 0.1s ease, filter 0.15s ease;
+}
+
+.reg-next-btn:active {
+  transform: scale(0.98);
+}
+
+.reg-next-btn:hover {
+  filter: brightness(1.04);
+}
+
+.reg-disclaimer-text {
+  font-size: 12px;
+  color: #a1a1aa;
+  text-align: center;
+  line-height: 1.45;
+  max-width: 280px;
+  margin: 0;
+}
