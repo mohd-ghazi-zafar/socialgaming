@@ -1,143 +1,201 @@
 .id-login-container {
-  display: flex;
-  flex-direction: column;
+  position: relative;
+  width: 100%;
+  height: 100%;
   min-height: 100vh;
   min-height: 100dvh;
-  width: 100%;
-  background: #ffffff;
-  color: #18181b;
-  padding: 20px 24px 30px 24px;
+  background-color: #ffffff;
+  color: #111827;
+  display: flex;
+  flex-direction: column;
+  padding: 16px 20px 24px 20px;
   box-sizing: border-box;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   user-select: none;
-  position: relative;
   overflow-y: auto;
 }
 
-/* Top Back Navigation */
+/* Top Back Navigation Arrow */
 .id-login-top-bar {
+  width: 100%;
+  height: 44px;
   display: flex;
   align-items: center;
-  width: 100%;
-  height: 40px;
 }
 
 .id-back-btn {
   background: transparent;
   border: none;
-  color: #18181b;
+  padding: 6px;
+  margin-left: -6px;
   cursor: pointer;
-  padding: 8px;
-  margin-left: -8px;
+  color: #1f2937;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  transition: background 0.15s ease;
+  transition: background-color 0.15s ease;
 }
 
-.id-back-btn:hover {
-  background: #f4f4f5;
+.id-back-btn:active {
+  background-color: #f3f4f6;
 }
 
-/* Form Container with Spacing matching Reference */
+.id-login-title {
+  text-align: center;
+  font-size: 20px;
+  font-weight: 800;
+  color: #111827;
+  margin: 12px 0 20px 0;
+  letter-spacing: -0.3px;
+}
+
+/* Error Banner */
+.id-error-banner {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #dc2626;
+  padding: 10px 14px;
+  border-radius: 14px;
+  font-size: 13px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 20px;
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+/* Form Body */
 .id-login-body {
+  margin-top: 10px;
   display: flex;
   flex-direction: column;
-  margin-top: 60px;
-  width: 100%;
 }
 
 .id-input-list {
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  margin-bottom: 38px;
+  gap: 16px;
+  margin-bottom: 28px;
 }
 
+/* Rounded Pill Inputs matching Reference Screenshot 3 */
 .id-pill-input-box {
   position: relative;
   width: 100%;
+  height: 52px;
+  background-color: #f4f6fa;
+  border-radius: 26px;
   display: flex;
   align-items: center;
+  padding: 0 20px;
+  box-sizing: border-box;
+  transition: all 0.2s ease;
+}
+
+.id-pill-input-box:focus-within {
+  background-color: #ffffff;
+  border: 1px solid #14d3be;
+  box-shadow: 0 0 0 3px rgba(20, 211, 190, 0.15);
 }
 
 .id-pill-input {
   width: 100%;
-  background: #f6f7f9;
-  border: 1.5px solid transparent;
-  color: #18181b;
-  font-size: 15px;
-  font-weight: 500;
-  padding: 15px 22px;
-  border-radius: 26px;
+  height: 100%;
+  border: none;
+  background: transparent;
   outline: none;
-  box-sizing: border-box;
-  transition: border-color 0.15s ease, background 0.15s ease;
-}
-
-.id-pill-input:focus {
-  background: #ffffff;
-  border-color: #65e2d9;
-  box-shadow: 0 0 0 3px rgba(101, 226, 217, 0.15);
+  font-size: 15px;
+  font-weight: 600;
+  color: #1f2937;
+  padding-right: 32px;
 }
 
 .id-pill-input::placeholder {
-  color: #a1a1aa;
+  color: #9ca3af;
   font-weight: 400;
 }
 
+/* Password Eye Toggle */
 .id-password-toggle-btn {
   position: absolute;
   right: 18px;
   background: transparent;
   border: none;
-  color: #a1a1aa;
+  color: #9ca3af;
   cursor: pointer;
-  padding: 4px;
   display: flex;
   align-items: center;
+  justify-content: center;
+  padding: 4px;
+  transition: color 0.15s ease;
 }
 
 .id-password-toggle-btn:hover {
-  color: #71717a;
+  color: #4b5563;
 }
 
-/* Turquoise Sign In Button */
+/* Turquoise Sign In Button matching reference screenshot */
 .id-signin-btn {
   width: 100%;
-  background: #14d3be;
-  border: none;
+  height: 50px;
+  background-color: #14d3be;
   color: #ffffff;
   font-size: 16px;
   font-weight: 700;
-  padding: 15px 0;
-  border-radius: 26px;
+  border: none;
+  border-radius: 25px;
   cursor: pointer;
-  box-shadow: 0 4px 16px rgba(20, 211, 190, 0.35);
-  transition: transform 0.1s ease, filter 0.15s ease;
+  box-shadow: 0 4px 14px rgba(20, 211, 190, 0.35);
+  transition: all 0.18s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   margin-bottom: 22px;
 }
 
-.id-signin-btn:active {
-  transform: scale(0.98);
+.id-signin-btn:hover:not(:disabled) {
+  background-color: #0dc4b0;
+  transform: translateY(-1px);
 }
 
-.id-signin-btn:hover {
-  filter: brightness(1.03);
+.id-signin-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.id-signin-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.btn-loading-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.spin-icon {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 /* Forgot Password Link */
 .forgot-password-link {
-  color: #4f75e2;
-  font-size: 14px;
-  font-weight: 500;
   text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: #6366f1;
   cursor: pointer;
   transition: opacity 0.15s ease;
 }
 
 .forgot-password-link:hover {
+  opacity: 0.8;
   text-decoration: underline;
-  opacity: 0.9;
 }

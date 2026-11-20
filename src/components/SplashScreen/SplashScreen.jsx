@@ -1,52 +1,92 @@
-import { useState, useEffect } from 'react'
-import splashArtwork from '../../assets/splash-artwork.jpg'
+import { useState, useRef, useEffect } from 'react'
+import { ArrowRight, Volume2, VolumeX } from 'lucide-react'
 import './SplashScreen.css'
 
 export default function SplashScreen({ onFinish }) {
   const [progress, setProgress] = useState(0)
+  const [isMuted, setIsMuted] = useState(true)
+  const videoRef = useRef(null)
 
+  // Ensure playback starts smoothly
   useEffect(() => {
-    const duration = 2800 // 2.8s splash screen duration
-    const intervalTime = 50
-    const increment = (intervalTime / duration) * 100
-
-    const timer = setInterval(() => {
-      setProgress((prev) => {
-        const next = prev + increment
-        if (next >= 100) {
-          clearInterval(timer)
-          setTimeout(onFinish, 200)
-          return 100
-        }
-        return next
+    const video = videoRef.current
+    if (video) {
+      video.play().catch((err) => {
+        console.warn('Autoplay prevented or video error:', err)
       })
-    }, intervalTime)
+    }
+  }, [])
 
-    return () => clearInterval(timer)
-  }, [onFinish])
+  const handleTimeUpdate = () => {
+    const video = videoRef.current
+    if (video && video.duration) {
+      const pct = (video.currentTime / video.duration) * 100
+      setProgress(pct)
+    }
+  }
+
+  const handleToggleMute = (e) => {
+    e.stopPropagation()
+    const video = videoRef.current
+    if (video) {
+      video.muted = !isMuted
+      setIsMuted(!isMuted)
+    }
+  }
 
   return (
-    <div className="splash-screen" onClick={onFinish} title="Click anywhere to skip">
-      {/* Background TopTop Artwork */}
-      <img
-        src={splashArtwork}
-        alt="TopTop Splash Screen"
-        className="splash-bg-image"
+    <div
+      className="splash-screen"
+      onClick={onFinish}
+      title="Tap anywhere to skip"
+    >
+      {/* Dynamic 9:16 Cinematic Video Background */}
+      <video
+        ref={videoRef}
+        className="splash-video-bg"
+        src="/gemini_generated_video_1f7433fe.mp4"
+        autoPlay
+        muted={isMuted}
+        playsInline
+        onTimeUpdate={handleTimeUpdate}
+        onEnded={onFinish}
       />
 
-      {/* Subtle Light Shimmer Sweep */}
-      <div className="splash-shimmer" />
+      {/* Top Controls: Sound Toggle & Skip */}
+      <div className="splash-top-row">
+        <button
+          className="splash-sound-btn"
+          onClick={handleToggleMute}
+          title={isMuted ? 'Unmute' : 'Mute'}
+        >
+          {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
+        </button>
 
-      {/* Top Skip Pill */}
-      <div className="splash-skip-pill">
-        <span>Skip</span>
+        <button
+          className="splash-skip-btn"
+          onClick={(e) => {
+            e.stopPropagation()
+            onFinish()
+          }}
+          title="Skip Intro"
+        >
+          <span>Skip</span>
+          <ArrowRight size={12} />
+        </button>
       </div>
 
-      {/* Bottom Progress Bar */}
-      <div
-        className="splash-progress-bar"
-        style={{ width: `${progress}%` }}
-      />
+      {/* Center Spacer keeping focus on the 3D animated UADA emblem in the video */}
+      <div className="splash-center-spacer" />
+
+      {/* Bottom Area: Sleek Loading Progress Bar (No Text) */}
+      <div className="splash-bottom-wrap">
+        <div className="splash-progress-track">
+          <div
+            className="splash-progress-fill"
+            style={{ width: `${Math.min(100, Math.max(progress, 3))}%` }}
+          />
+        </div>
+      </div>
     </div>
   )
 }

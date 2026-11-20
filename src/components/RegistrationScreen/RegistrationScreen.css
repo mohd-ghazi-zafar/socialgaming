@@ -1,81 +1,173 @@
 .reg-screen-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background-color: #ffffff;
+  color: #111827;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  user-select: none;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.reg-flow-step {
+  width: 100%;
+  height: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  min-height: 100vh;
-  min-height: 100dvh;
-  width: 100%;
-  background: #ffffff;
-  color: #18181b;
-  padding: 20px 24px 28px 24px;
+  padding: 16px 20px 24px 20px;
   box-sizing: border-box;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  user-select: none;
-  position: relative;
-  overflow-y: auto;
+}
+
+.animate-step {
+  animation: stepSlideIn 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes stepSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 /* Top Navigation Bar */
 .reg-top-bar {
+  width: 100%;
+  height: 44px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  height: 40px;
 }
 
 .reg-back-btn {
   background: transparent;
   border: none;
-  color: #18181b;
+  padding: 6px;
+  margin-left: -6px;
   cursor: pointer;
-  padding: 8px;
-  margin-left: -8px;
+  color: #1f2937;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  transition: background 0.15s ease;
+  transition: background-color 0.15s ease;
 }
 
-.reg-back-btn:hover {
-  background: #f4f4f5;
+.reg-back-btn:active {
+  background-color: #f3f4f6;
 }
 
-/* Page Title */
+/* Headings */
 .reg-title {
-  font-size: 20px;
-  font-weight: 800;
-  color: #18181b;
   text-align: center;
-  margin: 4px 0 24px 0;
+  font-size: 21px;
+  font-weight: 800;
+  color: #111827;
+  margin: 6px 0 16px 0;
   letter-spacing: -0.3px;
+}
+
+.reg-step-subtitle {
+  text-align: center;
+  font-size: 13px;
+  color: #6b7280;
+  margin: -6px 0 16px 0;
+}
+
+/* Error Banner */
+.reg-error-banner {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #dc2626;
+  padding: 10px 14px;
+  border-radius: 14px;
+  font-size: 13px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+/* Test Mode OTP Helper Banner */
+.test-otp-banner {
+  background: #f0fdfa;
+  border: 1px dashed #14d3be;
+  border-radius: 14px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  font-size: 12px;
+}
+
+.otp-pill-label {
+  color: #0d9488;
+  font-weight: 600;
+}
+
+.otp-code-highlight {
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  color: #0f766e;
+}
+
+.otp-autofill-btn {
+  background: #14d3be;
+  color: #ffffff;
+  border: none;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 5px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.otp-autofill-btn:hover {
+  opacity: 0.9;
 }
 
 /* Avatar Upload Circle */
 .avatar-upload-wrapper {
   display: flex;
   justify-content: center;
-  margin-bottom: 28px;
+  margin-bottom: 24px;
 }
 
 .avatar-upload-circle {
-  width: 110px;
-  height: 110px;
+  width: 96px;
+  height: 96px;
   border-radius: 50%;
-  background: #f1f4f8;
+  background-color: #f1f4f9;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  position: relative;
-  transition: transform 0.15s ease, background 0.15s ease;
   overflow: hidden;
+  position: relative;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.04);
+  transition: transform 0.15s ease, background-color 0.15s ease;
 }
 
-.avatar-upload-circle:hover {
-  background: #e6ebf2;
-  transform: scale(1.02);
+.avatar-upload-circle:active {
+  transform: scale(0.96);
+  background-color: #e5eaf2;
 }
 
 .avatar-plus-icon {
@@ -89,163 +181,475 @@
   object-fit: cover;
 }
 
-/* Form Body */
+/* Form Groups */
 .reg-form {
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  flex: 1;
+  gap: 16px;
+  width: 100%;
 }
 
 .reg-field-group {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .reg-field-label {
   font-size: 13px;
   font-weight: 600;
-  color: #71717a;
+  color: #6b7280;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
 }
 
 .label-required-asterisk {
-  color: #f43f5e;
+  color: #ff3b30;
   font-weight: 700;
 }
 
-/* Pill Inputs */
+/* Generic Pill Input */
 .reg-pill-input {
   width: 100%;
-  background: #f6f7f9;
-  border: 1.5px solid transparent;
-  color: #18181b;
+  height: 48px;
+  background-color: #f4f6fa;
+  border: 1px solid transparent;
+  border-radius: 24px;
+  padding: 0 18px;
   font-size: 15px;
   font-weight: 600;
-  padding: 14px 20px;
-  border-radius: 24px;
+  color: #1f2937;
   outline: none;
   box-sizing: border-box;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition: all 0.2s ease;
 }
 
 .reg-pill-input:focus {
-  background: #ffffff;
+  background-color: #ffffff;
   border-color: #14d3be;
-  box-shadow: 0 0 0 3px rgba(20, 211, 190, 0.12);
+  box-shadow: 0 0 0 3px rgba(20, 211, 190, 0.15);
 }
 
-.reg-pill-input::placeholder {
-  color: #a1a1aa;
-  font-weight: 400;
+.reg-password-box {
+  position: relative;
+  width: 100%;
 }
 
-/* Gender Selector Row */
+.reg-password-box .reg-pill-input {
+  padding-right: 46px;
+}
+
+.reg-pw-toggle {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 4px;
+}
+
+/* Gender Row */
 .gender-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
+  display: flex;
+  gap: 12px;
+  width: 100%;
 }
 
 .gender-pill-btn {
-  border: 2px solid transparent;
-  padding: 13px 0;
-  border-radius: 24px;
-  font-size: 15px;
+  flex: 1;
+  height: 46px;
+  border-radius: 23px;
+  border: 1.5px solid transparent;
+  font-size: 14px;
   font-weight: 700;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  transition: transform 0.1s ease, border-color 0.15s ease, box-shadow 0.15s ease;
-}
-
-.gender-pill-btn:active {
-  transform: scale(0.97);
+  gap: 4px;
+  transition: all 0.18s ease;
 }
 
 .gender-pill-male {
-  background: #e2f5fe;
+  background-color: #e5f6fd;
   color: #0284c7;
 }
 
 .gender-pill-male.active {
-  background: #d0effd;
   border-color: #0284c7;
-  box-shadow: 0 2px 10px rgba(2, 132, 199, 0.2);
+  box-shadow: 0 2px 8px rgba(2, 132, 199, 0.2);
 }
 
 .gender-pill-female {
-  background: #fef0f5;
-  color: #ec4899;
+  background-color: #fdf2f8;
+  color: #db2777;
 }
 
 .gender-pill-female.active {
-  background: #fde2ee;
-  border-color: #ec4899;
-  box-shadow: 0 2px 10px rgba(236, 72, 153, 0.2);
+  border-color: #db2777;
+  box-shadow: 0 2px 8px rgba(219, 39, 119, 0.2);
 }
 
 /* Age Dropdown */
 .age-dropdown-wrapper {
   position: relative;
-  display: flex;
-  align-items: center;
+  width: 100%;
 }
 
 .age-select-input {
   appearance: none;
+  -webkit-appearance: none;
   cursor: pointer;
-  padding-right: 42px;
+  color: #6b7280;
+}
+
+.age-select-input:valid,
+.age-select-input option:not([value=""]) {
+  color: #1f2937;
 }
 
 .dropdown-arrow-icon {
   position: absolute;
   right: 18px;
-  color: #a1a1aa;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #9ca3af;
   pointer-events: none;
 }
 
-/* Bottom Action & Disclaimer */
+/* ======================================================== */
+/* STEP 2: PHONE SCREENSHOT STYLING                        */
+/* ======================================================== */
+.phone-step {
+  padding: 16px 0 0 0;
+  background-color: #ffffff;
+}
+
+.phone-step-content {
+  padding: 0 20px;
+}
+
+.phone-step-title {
+  font-size: 22px;
+  font-weight: 800;
+  color: #111827;
+  margin: 16px 0 24px 0;
+  letter-spacing: -0.4px;
+}
+
+.phone-input-pill-box {
+  width: 100%;
+  height: 52px;
+  background-color: #f4f6fa;
+  border-radius: 26px;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  box-sizing: border-box;
+  margin-bottom: 24px;
+  transition: all 0.2s ease;
+}
+
+.phone-input-pill-box:focus-within {
+  background-color: #ffffff;
+  border: 1px solid #14d3be;
+  box-shadow: 0 0 0 3px rgba(20, 211, 190, 0.15);
+}
+
+.country-code-pill {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #111827;
+  cursor: pointer;
+}
+
+.country-arrow {
+  color: #6b7280;
+}
+
+.phone-input-divider {
+  width: 1.5px;
+  height: 20px;
+  background-color: #14d3be;
+  margin: 0 12px;
+}
+
+.phone-native-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 16px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.phone-native-input::placeholder {
+  color: #9ca3af;
+  font-weight: 400;
+}
+
+.phone-next-btn {
+  margin-top: 10px;
+}
+
+/* iOS Style Number Keypad (Bottom section of Step 2) */
+.ios-keypad-container {
+  width: 100%;
+  background-color: #d1d5db;
+  border-top-left-radius: 20px;
+  border-top-right-radius: 20px;
+  padding: 10px 8px 18px 8px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: auto;
+}
+
+.keypad-row {
+  display: flex;
+  gap: 6px;
+  width: 100%;
+}
+
+.keypad-digit-btn {
+  flex: 1;
+  height: 50px;
+  background-color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.1s ease;
+}
+
+.keypad-digit-btn:active {
+  background-color: #e5e7eb;
+}
+
+.keypad-digit-num {
+  font-size: 22px;
+  font-weight: 600;
+  color: #111827;
+  line-height: 1.1;
+}
+
+.keypad-digit-sub {
+  font-size: 9px;
+  font-weight: 700;
+  color: #4b5563;
+  letter-spacing: 1.5px;
+  margin-top: -1px;
+}
+
+.keypad-spacer {
+  flex: 1;
+}
+
+.keypad-backspace-btn {
+  flex: 1;
+  height: 50px;
+  background: transparent;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #111827;
+  transition: transform 0.1s;
+}
+
+.keypad-backspace-btn:active {
+  transform: scale(0.92);
+}
+
+/* ======================================================== */
+/* STEP 4: SUCCESS MODAL / UNIQUE ID REVEAL                 */
+/* ======================================================== */
+.success-step {
+  justify-content: center;
+  align-items: center;
+  padding: 24px;
+}
+
+.success-content-card {
+  width: 100%;
+  max-width: 320px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.success-check-badge {
+  color: #14d3be;
+  margin-bottom: 14px;
+  animation: bounceCheck 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes bounceCheck {
+  0% { transform: scale(0.3); opacity: 0; }
+  70% { transform: scale(1.15); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.success-title {
+  font-size: 24px;
+  font-weight: 900;
+  color: #111827;
+  margin: 0 0 6px 0;
+}
+
+.success-desc {
+  font-size: 13px;
+  color: #6b7280;
+  margin: 0 0 20px 0;
+  line-height: 1.4;
+}
+
+.unique-id-showcase-box {
+  width: 100%;
+  background: #f8fafc;
+  border: 1.5px dashed #14d3be;
+  border-radius: 16px;
+  padding: 16px;
+  box-sizing: border-box;
+  margin-bottom: 24px;
+}
+
+.unique-id-lbl {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+  color: #0f766e;
+  display: block;
+  margin-bottom: 8px;
+}
+
+.unique-id-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 10px 14px;
+}
+
+.unique-id-code {
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: #0f172a;
+}
+
+.id-copy-action-btn {
+  background: #14d3be;
+  color: #ffffff;
+  border: none;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s ease;
+}
+
+.id-copy-action-btn:hover {
+  background: #0ea5e9;
+}
+
+.unique-id-hint {
+  font-size: 11px;
+  color: #64748b;
+  margin: 10px 0 0 0;
+  line-height: 1.4;
+}
+
+/* ======================================================== */
+/* BOTTOM NEXT BUTTONS & DISCLAIMERS                        */
+/* ======================================================== */
 .reg-bottom-section {
+  width: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 14px;
-  margin-top: 36px;
+  margin-top: 24px;
 }
 
 .reg-next-btn {
   width: 100%;
-  background: #14d3be;
-  border: none;
+  height: 50px;
+  background-color: #14d3be;
   color: #ffffff;
   font-size: 16px;
   font-weight: 700;
-  padding: 15px 0;
-  border-radius: 26px;
+  border: none;
+  border-radius: 25px;
   cursor: pointer;
-  box-shadow: 0 6px 18px rgba(20, 211, 190, 0.35);
-  transition: transform 0.1s ease, filter 0.15s ease;
+  box-shadow: 0 4px 14px rgba(20, 211, 190, 0.35);
+  transition: all 0.18s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.reg-next-btn:active {
-  transform: scale(0.98);
+.reg-next-btn:hover:not(:disabled) {
+  background-color: #0dc4b0;
+  transform: translateY(-1px);
 }
 
-.reg-next-btn:hover {
-  filter: brightness(1.04);
+.reg-next-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.reg-next-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.btn-loading-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.spin-icon {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .reg-disclaimer-text {
   font-size: 12px;
-  color: #a1a1aa;
+  color: #9ca3af;
   text-align: center;
-  line-height: 1.45;
-  max-width: 280px;
+  line-height: 1.4;
   margin: 0;
+  padding: 0 8px;
 }
