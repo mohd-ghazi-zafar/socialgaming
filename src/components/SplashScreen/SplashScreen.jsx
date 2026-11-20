@@ -10,7 +10,7 @@ export default function SplashScreen({ onFinish }) {
     return localStorage.getItem('uada_splash_mode') || 'vector'
   })
   const [progress, setProgress] = useState(0)
-  const [isMuted, setIsMuted] = useState(true)
+  const [isMuted, setIsMuted] = useState(false)
   const videoRef = useRef(null)
 
   // Switch mode and persist preference
@@ -25,6 +25,7 @@ export default function SplashScreen({ onFinish }) {
     setProgress(0)
     if (mode === 'video' && videoRef.current) {
       videoRef.current.currentTime = 0
+      videoRef.current.muted = isMuted
       videoRef.current.play().catch(console.warn)
     }
   }
@@ -52,14 +53,20 @@ export default function SplashScreen({ onFinish }) {
     return () => clearInterval(timer)
   }, [mode, onFinish])
 
-  // Video mode initialization
+  // Video mode initialization (attempts unmuted autoplay first)
   useEffect(() => {
     if (mode !== 'video') return
 
     const video = videoRef.current
     if (video) {
       video.currentTime = 0
-      video.play().catch(console.warn)
+      video.muted = isMuted
+      video.play().catch((err) => {
+        console.warn('Initial unmuted autoplay blocked by browser policy, falling back to muted:', err)
+        video.muted = true
+        setIsMuted(true)
+        video.play().catch(console.warn)
+      })
     }
   }, [mode])
 
@@ -75,8 +82,9 @@ export default function SplashScreen({ onFinish }) {
     e.stopPropagation()
     const video = videoRef.current
     if (video) {
-      video.muted = !isMuted
-      setIsMuted(!isMuted)
+      const nextMuted = !isMuted
+      video.muted = nextMuted
+      setIsMuted(nextMuted)
     }
   }
 
@@ -93,7 +101,7 @@ export default function SplashScreen({ onFinish }) {
         <video
           ref={videoRef}
           className="splash-video-bg"
-          src="/gemini_generated_video_1f7433fe.mp4"
+          src="/Video Project 3.mp4"
           autoPlay
           muted={isMuted}
           playsInline
