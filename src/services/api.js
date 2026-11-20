@@ -1,4 +1,4 @@
-const API_BASE_URL = 'http://72.61.235.208:7011/api/signuproute'
+const API_BASE_URL = 'https://72-61-235-208.sslip.io/api/signuproute'
 
 export const AUTH_STORAGE_KEY = 'uada_auth_session'
 
