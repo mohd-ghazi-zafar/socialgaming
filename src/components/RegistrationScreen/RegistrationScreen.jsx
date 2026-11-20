@@ -37,7 +37,7 @@ export default function RegistrationScreen({ onBack, onComplete }) {
         </div>
 
         {/* Page Heading */}
-        <h2 className="reg-title">Welcome to TopTop</h2>
+        <h2 className="reg-title">Welcome to UADA</h2>
 
         {/* Avatar Upload Placeholder */}
         <div className="avatar-upload-wrapper">

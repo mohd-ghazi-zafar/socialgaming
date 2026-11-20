@@ -106,7 +106,7 @@
 /* Turquoise Sign In Button */
 .id-signin-btn {
   width: 100%;
-  background: #65e2d9;
+  background: #14d3be;
   border: none;
   color: #ffffff;
   font-size: 16px;
@@ -114,7 +114,7 @@
   padding: 15px 0;
   border-radius: 26px;
   cursor: pointer;
-  box-shadow: 0 4px 14px rgba(101, 226, 217, 0.3);
+  box-shadow: 0 4px 16px rgba(20, 211, 190, 0.35);
   transition: transform 0.1s ease, filter 0.15s ease;
   margin-bottom: 22px;
 }

@@ -26,7 +26,7 @@ function App() {
         <RegistrationScreen
           onBack={() => setCurrentScreen('main')}
           onComplete={(data) => {
-            alert(`Welcome to TopTop, ${data.nickname || 'Player'}! Profile setup complete.`)
+            alert(`Welcome to UADA, ${data.nickname || 'Player'}! Profile setup complete.`)
             setCurrentScreen('main')
           }}
         />
@@ -36,7 +36,7 @@ function App() {
         <IdLoginScreen
           onBack={() => setCurrentScreen('main')}
           onSignIn={(data) => {
-            alert(`Signed in successfully with TopTop ID: ${data.topTopId}!`)
+            alert(`Signed in successfully with UADA ID: ${data.uadaId}!`)
             setCurrentScreen('main')
           }}
         />

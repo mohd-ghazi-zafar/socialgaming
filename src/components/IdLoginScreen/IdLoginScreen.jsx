@@ -3,13 +3,13 @@ import { ChevronLeft, Eye, EyeOff } from 'lucide-react'
 import './IdLoginScreen.css'
 
 export default function IdLoginScreen({ onBack, onSignIn }) {
-  const [topTopId, setTopTopId] = useState('')
+  const [uadaId, setUadaId] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
 
   const handleSubmit = (e) => {
     e.preventDefault()
-    onSignIn({ topTopId, password })
+    onSignIn({ uadaId, password })
   }
 
   return (
@@ -25,14 +25,14 @@ export default function IdLoginScreen({ onBack, onSignIn }) {
       <div className="id-login-body">
         <form onSubmit={handleSubmit}>
           <div className="id-input-list">
-            {/* TopTop ID Input */}
+            {/* UADA ID Input */}
             <div className="id-pill-input-box">
               <input
                 type="text"
                 className="id-pill-input"
-                placeholder="Enter TopTop ID"
-                value={topTopId}
-                onChange={(e) => setTopTopId(e.target.value)}
+                placeholder="Enter UADA ID"
+                value={uadaId}
+                onChange={(e) => setUadaId(e.target.value)}
                 required
               />
             </div>

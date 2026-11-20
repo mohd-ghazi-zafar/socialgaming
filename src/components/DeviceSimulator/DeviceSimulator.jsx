@@ -137,10 +137,10 @@ export default function DeviceSimulator({ children }) {
         {/* Left: Branding */}
         <div className="toolbar-brand">
           <div className="brand-badge">
-            <Smartphone size={15} />
+            <img src="/LOGO.svg" alt="ClickNova Logo" style={{ width: 18, height: 18, objectFit: 'contain' }} />
             <span>Android Canvas</span>
           </div>
-          <span className="brand-title">ClickNova Play Mobile Prototype</span>
+          <span className="brand-title">ClickNova Play</span>
         </div>
 
         {/* Center: Device Controls */}
