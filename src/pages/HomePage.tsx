@@ -1,17 +1,25 @@
 import React, { useState } from 'react'
-import { TopTopGameCards } from '../components/home/TopTopGameCards'
-import { FindFriendList } from '../components/home/FindFriendList'
+import { TopTopHeader } from '../components/layout/TopTopHeader'
+import { CasualGamesHeader } from '../components/home/CasualGamesHeader'
+import { GameCardsGrid } from '../components/home/GameCardsGrid'
+import { FindFriendSection } from '../components/home/FindFriendSection'
 import { CreateRoomModal } from '../components/rooms/CreateRoomModal'
 import type { CreateRoomConfig, GameType } from '../types/contracts'
 
 interface HomePageProps {
+  coins?: number
   onJoinRoomSession: (roomId: string, pin?: string) => void
   onQuickMatchLaunch: (game: GameType) => void
+  onOpenWallet?: () => void
+  onOpenSearch?: () => void
 }
 
 export const HomePage: React.FC<HomePageProps> = ({
+  coins = 0,
   onJoinRoomSession,
   onQuickMatchLaunch,
+  onOpenWallet,
+  onOpenSearch,
 }) => {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
 
@@ -33,37 +41,25 @@ export const HomePage: React.FC<HomePageProps> = ({
   }
 
   return (
-    <div className="relative w-full space-y-3 pb-2 max-w-[531px] mx-auto select-none">
-      {/* 1. Casual Games Header Bar with "Private room +" Button */}
-      <div className="relative w-full">
-        <img
-          src="/toptop/home_casual_header_only.png"
-          alt="Casual Games"
-          className="w-full h-auto block pointer-events-none select-none"
-        />
-        {/* Clickable Hotspot on "Private room +" pill button */}
-        <button
-          type="button"
-          onClick={() => setIsCreateModalOpen(true)}
-          className="absolute top-1/2 -translate-y-1/2 right-0 w-[140px] h-[36px] rounded-full cursor-pointer opacity-0 hover:opacity-10 bg-white"
-          title="Create Private Room"
-        />
-      </div>
+    <div className="relative w-full max-w-[471px] mx-auto select-none bg-[#031914] min-h-full">
+      {/* 1. Authentic TopTop Header Bar with Real SVGs & Interactive Controls */}
+      <TopTopHeader
+        coins={coins}
+        onWalletClick={onOpenWallet}
+        onGiftClick={() => alert('🎁 Daily Lucky Gift: +500 Coins Collected!')}
+        onRankClick={() => alert('🏆 Top 1 Global Rank Leaderboard')}
+        onSearchClick={onOpenSearch || (() => alert('Search Players and Rooms'))}
+        onProfileClick={onOpenWallet}
+      />
 
-      {/* 2. Four 3D Custom Game Bento Cards (2x2 Grid) */}
-      <TopTopGameCards onSelectGame={handleSelectGame} />
+      {/* 2. Casual Games Section Header */}
+      <CasualGamesHeader onCreatePrivateRoom={() => setIsCreateModalOpen(true)} />
 
-      {/* 3. Find Friend Header Bar */}
-      <div className="relative w-full pt-1">
-        <img
-          src="/toptop/home_find_friend_header.png"
-          alt="Find Friend"
-          className="w-full h-auto block pointer-events-none select-none"
-        />
-      </div>
+      {/* 3. Six 3D Game Cards with Arabesque Crests & SVG Art */}
+      <GameCardsGrid onSelectGame={handleSelectGame} />
 
-      {/* 4. Active Friends / Rooms List */}
-      <FindFriendList onJoinRoom={(roomId) => onJoinRoomSession(roomId)} />
+      {/* 4. Active Friends Rooms (Find Friend List) */}
+      <FindFriendSection onJoinRoom={(roomId) => onJoinRoomSession(roomId)} />
 
       {/* Create Room Modal */}
       <CreateRoomModal

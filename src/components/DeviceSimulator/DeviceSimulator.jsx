@@ -31,9 +31,9 @@ export default function DeviceSimulator({ children }) {
   const [forceNativeView, setForceNativeView] = useState(false)
 
   // Device Selection & Dimensions
-  const [selectedPresetId, setSelectedPresetId] = useState('iphone-16-pro-max')
-  const [customWidth, setCustomWidth] = useState(430)
-  const [customHeight, setCustomHeight] = useState(932)
+  const [selectedPresetId, setSelectedPresetId] = useState('toptop-reference')
+  const [customWidth, setCustomWidth] = useState(471)
+  const [customHeight, setCustomHeight] = useState(1024)
   const [isLandscape, setIsLandscape] = useState(false)
 
   // Display & Simulation options

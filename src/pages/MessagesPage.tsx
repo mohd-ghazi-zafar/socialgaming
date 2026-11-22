@@ -1,408 +1,162 @@
-import React, { useState, useMemo } from 'react'
-import {
-  Search,
-  Users,
-  Send,
-  PlusCircle,
-  CheckCheck,
-  Check,
-  X,
-  ArrowLeft,
-  Circle,
-} from 'lucide-react'
-import type { ConversationItem, ChatMessage } from '../types/contracts'
+import React, { useState } from 'react'
+import { Search, UserPlus, MessageSquarePlus, Bell, Check } from 'lucide-react'
+import { FlagEG } from '../components/common/SvgIcons'
+
+interface ChatThread {
+  id: string
+  name: string
+  avatarText?: string
+  avatarBg: string
+  countryFlag?: React.FC<{ className?: string }>
+  badgeText?: string
+  badgeBg?: string
+  lastMessage: string
+  timestamp: string
+  unreadCount?: number
+  isSystem?: boolean
+}
 
 export const MessagesPage: React.FC = () => {
-  // Mock conversations wired to typed contract
-  const [conversations, setConversations] = useState<ConversationItem[]>([
-    {
-      id: 'conv-1',
-      type: 'direct',
-      name: 'Tariq Al-Mansoor',
-      avatarUrl: '/logo-cutout.png',
-      lastMessage: 'Are you ready for the 1000 coin Ludo table?',
-      lastMessageTime: '12:45 PM',
-      unreadCount: 2,
-      isOnline: true,
-    },
-    {
-      id: 'conv-2',
-      type: 'group',
-      name: 'Dubai Jackaroo Syndicate',
-      avatarUrl: '/logo-cutout.png',
-      lastMessage: 'Sultan: Let’s host a 10-player room tonight',
-      lastMessageTime: '11:10 AM',
-      unreadCount: 0,
-      memberCount: 8,
-    },
-    {
-      id: 'conv-3',
-      type: 'direct',
-      name: 'Sara_Chess',
-      avatarUrl: '/logo-cutout.png',
-      lastMessage: 'Rematch pending on table #104 ♟️',
-      lastMessageTime: 'Yesterday',
-      unreadCount: 0,
-      isOnline: false,
-    },
-  ])
-
-  // Active chat thread messages
-  const [messagesMap, setMessagesMap] = useState<Record<string, ChatMessage[]>>({
-    'conv-1': [
-      {
-        id: 'm-1',
-        conversationId: 'conv-1',
-        senderId: 'tariq-1',
-        senderName: 'Tariq Al-Mansoor',
-        senderAvatar: '/logo-cutout.png',
-        text: 'Assalamu alaikum! GGs in the tournament earlier.',
-        timestamp: '12:40 PM',
-        isSelf: false,
-        status: 'read',
-      },
-      {
-        id: 'm-2',
-        conversationId: 'conv-1',
-        senderId: 'self',
-        senderName: 'You',
-        senderAvatar: '/logo-cutout.png',
-        text: 'Wa alaikum assalam! You played great defense.',
-        timestamp: '12:42 PM',
-        isSelf: true,
-        status: 'read',
-      },
-      {
-        id: 'm-3',
-        conversationId: 'conv-1',
-        senderId: 'tariq-1',
-        senderName: 'Tariq Al-Mansoor',
-        senderAvatar: '/logo-cutout.png',
-        text: 'Are you ready for the 1000 coin Ludo table?',
-        timestamp: '12:45 PM',
-        isSelf: false,
-        status: 'delivered',
-      },
-    ],
-  })
-
-  const [activeConvId, setActiveConvId] = useState<string | null>('conv-1')
   const [searchQuery, setSearchQuery] = useState('')
-  const [messageInput, setMessageInput] = useState('')
-  const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false)
-  const [newGroupName, setNewGroupName] = useState('')
 
-  // Filtered conversations
-  const filteredConversations = useMemo(() => {
-    return conversations.filter(
-      (c) =>
-        !searchQuery.trim() ||
-        c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        c.lastMessage.toLowerCase().includes(searchQuery.toLowerCase())
-    )
-  }, [conversations, searchQuery])
+  const threads: ChatThread[] = [
+    {
+      id: 'thread-1',
+      name: '...دي_ياخاك',
+      countryFlag: FlagEG,
+      badgeText: 'Tribe Group',
+      badgeBg: 'bg-blue-600/30 text-blue-300 border border-blue-500/40',
+      avatarText: '🧔',
+      avatarBg: 'bg-gradient-to-tr from-slate-800 to-zinc-700',
+      lastMessage: 'Welcome to the tribe chat, منعم الشوري ...',
+      timestamp: '10:40',
+    },
+    {
+      id: 'thread-2',
+      name: 'System Information',
+      avatarText: '🔔',
+      avatarBg: 'bg-gradient-to-tr from-teal-500 to-emerald-600',
+      lastMessage: 'The tribe rocket has been launched! Check your clan inventory.',
+      timestamp: '00:09',
+      unreadCount: 3,
+      isSystem: true,
+    },
+    {
+      id: 'thread-3',
+      name: 'Brother Of Martyrs 🤍🥀',
+      avatarText: '👨',
+      avatarBg: 'bg-gradient-to-tr from-rose-900 to-amber-950',
+      lastMessage: 'How a re tou doing',
+      timestamp: '11-20',
+    },
+  ]
 
-  const activeConversation = conversations.find((c) => c.id === activeConvId)
-  const currentMessages = activeConvId ? messagesMap[activeConvId] || [] : []
-
-  // Send message handler (sanitizes text, updates real-time thread)
-  const handleSendMessage = (e: React.FormEvent) => {
-    e.preventDefault()
-    const clean = messageInput.trim()
-    if (!clean || !activeConvId) return
-
-    const newMsg: ChatMessage = {
-      id: `msg-${Date.now()}`,
-      conversationId: activeConvId,
-      senderId: 'self',
-      senderName: 'You',
-      senderAvatar: '/logo-cutout.png',
-      text: clean,
-      timestamp: 'Just now',
-      isSelf: true,
-      status: 'sent',
-    }
-
-    setMessagesMap((prev) => ({
-      ...prev,
-      [activeConvId]: [...(prev[activeConvId] || []), newMsg],
-    }))
-
-    setConversations((prev) =>
-      prev.map((c) =>
-        c.id === activeConvId
-          ? { ...c, lastMessage: clean, lastMessageTime: 'Just now', unreadCount: 0 }
-          : c
-      )
-    )
-
-    setMessageInput('')
-  }
-
-  // Create Group Handler
-  const handleCreateGroup = (e: React.FormEvent) => {
-    e.preventDefault()
-    const clean = newGroupName.trim()
-    if (!clean) return
-
-    const newGroup: ConversationItem = {
-      id: `grp-${Date.now()}`,
-      type: 'group',
-      name: clean,
-      avatarUrl: '/logo-cutout.png',
-      lastMessage: 'Group created. Welcome everyone!',
-      lastMessageTime: 'Just now',
-      unreadCount: 0,
-      memberCount: 1,
-    }
-
-    setConversations([newGroup, ...conversations])
-    setActiveConvId(newGroup.id)
-    setNewGroupName('')
-    setIsCreateGroupOpen(false)
-  }
+  const filteredThreads = threads.filter(
+    (t) =>
+      t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      t.lastMessage.toLowerCase().includes(searchQuery.toLowerCase())
+  )
 
   return (
-    <div className="flex h-[calc(100vh-140px)] md:h-[680px] w-full overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 shadow-xl">
-      {/* Left Column: Conversations List */}
-      <div
-        className={`w-full md:w-80 flex-col border-r border-slate-800 bg-slate-950/60 ${
-          activeConvId ? 'hidden md:flex' : 'flex'
-        }`}
-      >
-        {/* Header & Create Group Trigger */}
-        <div className="flex items-center justify-between border-b border-slate-800 p-3.5">
-          <h3 className="text-base font-bold text-white">Messages</h3>
+    <div className="relative w-full max-w-[471px] mx-auto select-none bg-[#031914] min-h-screen text-white pb-6">
+      {/* Top Header */}
+      <div className="px-4 pt-3 pb-2 flex items-center justify-between border-b border-emerald-950/60 bg-[#06201a]">
+        <h1 className="text-xl font-black text-white tracking-tight">Message</h1>
+        <div className="flex items-center gap-3">
           <button
-            onClick={() => setIsCreateGroupOpen(true)}
-            className="flex items-center gap-1 rounded-lg border border-purple-500/30 bg-purple-500/10 px-2 py-1 text-xs font-semibold text-purple-300 hover:bg-purple-500/20 transition-all"
-            title="Create New Group"
+            type="button"
+            onClick={() => alert('Add New Friend')}
+            className="text-slate-300 hover:text-white transition-colors cursor-pointer"
+            title="Add Friend"
           >
-            <PlusCircle className="h-3.5 w-3.5" />
-            <span>Group</span>
+            <UserPlus className="w-5 h-5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => alert('Create Group Chat')}
+            className="text-slate-300 hover:text-white transition-colors cursor-pointer"
+            title="Create Group"
+          >
+            <MessageSquarePlus className="w-5 h-5" />
           </button>
         </div>
+      </div>
 
-        {/* Search */}
-        <div className="p-3 border-b border-slate-800/80">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search chat or friends..."
-              className="w-full rounded-xl border border-slate-800 bg-slate-900 pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
-            />
-          </div>
-        </div>
-
-        {/* List */}
-        <div className="flex-1 overflow-y-auto divide-y divide-slate-800/40">
-          {filteredConversations.length === 0 ? (
-            <div className="p-6 text-center text-xs text-slate-500">
-              No conversations found.
-            </div>
-          ) : (
-            filteredConversations.map((c) => {
-              const isSelected = c.id === activeConvId
-              return (
-                <div
-                  key={c.id}
-                  onClick={() => setActiveConvId(c.id)}
-                  className={`flex items-center gap-3 p-3 cursor-pointer transition-colors ${
-                    isSelected
-                      ? 'bg-purple-600/15 border-l-2 border-purple-500'
-                      : 'hover:bg-slate-900/60'
-                  }`}
-                >
-                  <div className="relative">
-                    <img
-                      src={c.avatarUrl}
-                      alt={c.name}
-                      className="h-10 w-10 rounded-full border border-slate-700 object-cover"
-                    />
-                    {c.isOnline && (
-                      <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-400 border-2 border-slate-950" />
-                    )}
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-white truncate">
-                        {c.name}
-                      </span>
-                      <span className="text-[10px] text-slate-500">
-                        {c.lastMessageTime}
-                      </span>
-                    </div>
-                    <p className="mt-0.5 text-[11px] text-slate-400 truncate">
-                      {c.lastMessage}
-                    </p>
-                  </div>
-
-                  {c.unreadCount > 0 && (
-                    <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-purple-500 px-1 text-[10px] font-bold text-white">
-                      {c.unreadCount}
-                    </span>
-                  )}
-                </div>
-              )
-            })
-          )}
+      {/* Search Bar */}
+      <div className="p-3">
+        <div className="flex items-center gap-2 bg-[#08231e] border border-emerald-800/40 rounded-full px-3 py-1.5 shadow-inner">
+          <Search className="w-4 h-4 text-slate-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search friend or group chat"
+            className="bg-transparent text-xs text-white placeholder-slate-400 focus:outline-none flex-1"
+          />
         </div>
       </div>
 
-      {/* Right Column: Active Thread (or Empty View) */}
-      <div
-        className={`flex-1 flex-col bg-slate-900 ${
-          activeConvId ? 'flex' : 'hidden md:flex'
-        }`}
-      >
-        {activeConversation ? (
-          <>
-            {/* Header */}
-            <div className="flex h-14 items-center justify-between border-b border-slate-800 px-4 bg-slate-950/40">
-              <div className="flex items-center gap-2.5">
-                <button
-                  onClick={() => setActiveConvId(null)}
-                  className="md:hidden flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:text-white"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                </button>
-                <img
-                  src={activeConversation.avatarUrl}
-                  alt={activeConversation.name}
-                  className="h-8 w-8 rounded-full border border-slate-700 object-cover"
-                />
-                <div>
-                  <h4 className="text-xs font-bold text-white leading-tight">
-                    {activeConversation.name}
-                  </h4>
-                  <div className="flex items-center gap-1 text-[10px] text-slate-400">
-                    {activeConversation.type === 'group' ? (
-                      <span>{activeConversation.memberCount || 2} members</span>
-                    ) : activeConversation.isOnline ? (
-                      <span className="text-emerald-400 flex items-center gap-1">
-                        <Circle className="h-1.5 w-1.5 fill-current" /> Online
-                      </span>
-                    ) : (
-                      <span>Offline</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
+      {/* Sync Status Badge */}
+      <div className="px-4 pb-2 flex items-center gap-1.5 text-xs text-slate-400">
+        <Check className="w-3.5 h-3.5 text-teal-400" />
+        <span>Chats restored</span>
+      </div>
 
-            {/* Message Thread */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              {currentMessages.map((m) => (
-                <div
-                  key={m.id}
-                  className={`flex flex-col ${
-                    m.isSelf ? 'items-end' : 'items-start'
-                  }`}
-                >
-                  <div
-                    className={`max-w-[78%] rounded-2xl px-3.5 py-2 text-xs leading-relaxed shadow-sm ${
-                      m.isSelf
-                        ? 'bg-purple-600 text-white rounded-br-sm'
-                        : 'bg-slate-800 border border-slate-700/60 text-slate-200 rounded-bl-sm'
-                    }`}
-                  >
-                    {!m.isSelf && activeConversation.type === 'group' && (
-                      <span className="block text-[10px] font-bold text-purple-300 mb-0.5">
-                        {m.senderName}
-                      </span>
-                    )}
-                    <p className="break-words">{m.text}</p>
-                  </div>
-                  <div className="mt-1 flex items-center gap-1 text-[10px] text-slate-500 px-1">
-                    <span>{m.timestamp}</span>
-                    {m.isSelf &&
-                      (m.status === 'read' ? (
-                        <CheckCheck className="h-3 w-3 text-cyan-400" />
-                      ) : (
-                        <Check className="h-3 w-3" />
-                      ))}
-                  </div>
-                </div>
-              ))}
-            </div>
+      {/* Conversations List */}
+      <div className="divide-y divide-emerald-950/40">
+        {filteredThreads.map((thread) => {
+          const Flag = thread.countryFlag
 
-            {/* Input Bar */}
-            <form
-              onSubmit={handleSendMessage}
-              className="border-t border-slate-800 p-3 bg-slate-950/60 flex items-center gap-2"
+          return (
+            <div
+              key={thread.id}
+              onClick={() => alert(`Opening chat with ${thread.name}`)}
+              className="px-4 py-3 flex items-center justify-between hover:bg-[#07241e] active:bg-[#0a2f27] transition-colors cursor-pointer"
             >
-              <input
-                type="text"
-                value={messageInput}
-                onChange={(e) => setMessageInput(e.target.value)}
-                placeholder="Type your message..."
-                maxLength={300}
-                className="flex-1 rounded-full border border-slate-700 bg-slate-900 px-3.5 py-2 text-xs text-white placeholder-slate-500 focus:border-purple-500 focus:outline-none"
-              />
-              <button
-                type="submit"
-                disabled={!messageInput.trim()}
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-purple-600 text-white disabled:opacity-40 hover:bg-purple-500 transition-colors"
-              >
-                <Send className="h-3.5 w-3.5" />
-              </button>
-            </form>
-          </>
-        ) : (
-          <div className="flex h-full flex-col items-center justify-center p-6 text-center text-slate-500 text-xs">
-            <Users className="h-10 w-10 text-slate-700 mb-2" />
-            <p className="font-semibold text-slate-400">Select a conversation</p>
-            <p className="mt-1">Connect with friends, team members, or room hosts.</p>
-          </div>
-        )}
-      </div>
+              <div className="flex items-center gap-3 min-w-0 flex-1 mr-3">
+                {/* Avatar */}
+                <div
+                  className={`w-12 h-12 rounded-full ${thread.avatarBg} flex items-center justify-center text-xl shadow-md shrink-0 ring-1 ring-white/10`}
+                >
+                  {thread.isSystem ? <Bell className="w-6 h-6 text-[#041d18]" /> : thread.avatarText}
+                </div>
 
-      {/* Create Group Modal */}
-      {isCreateGroupOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="w-full max-w-xs rounded-2xl border border-slate-800 bg-slate-900 p-4 shadow-xl">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-              <span className="text-sm font-bold text-white">New Gaming Group</span>
-              <button
-                onClick={() => setIsCreateGroupOpen(false)}
-                className="text-slate-400 hover:text-white"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <form onSubmit={handleCreateGroup} className="mt-3 space-y-3">
-              <input
-                type="text"
-                value={newGroupName}
-                onChange={(e) => setNewGroupName(e.target.value)}
-                placeholder="Group title (e.g. Ludo Squad)"
-                maxLength={25}
-                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500"
-              />
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsCreateGroupOpen(false)}
-                  className="flex-1 rounded-xl border border-slate-700 py-1.5 text-xs text-slate-300"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={!newGroupName.trim()}
-                  className="flex-1 rounded-xl bg-purple-600 py-1.5 text-xs font-bold text-white hover:bg-purple-500 disabled:opacity-40"
-                >
-                  Create
-                </button>
+                <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+                  {/* Name and Tags */}
+                  <div className="flex items-center gap-1.5">
+                    {Flag && <Flag className="w-4 h-3 rounded-xs shrink-0" />}
+                    <span className="text-[13px] font-bold text-white truncate">
+                      {thread.name}
+                    </span>
+                    {thread.badgeText && (
+                      <span className={`text-[9px] font-extrabold px-1.5 py-0.2 rounded-full ${thread.badgeBg} shrink-0`}>
+                        {thread.badgeText}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Last message preview */}
+                  <span className="text-xs text-slate-400 truncate">
+                    {thread.lastMessage}
+                  </span>
+                </div>
               </div>
-            </form>
-          </div>
-        </div>
-      )}
+
+              {/* Timestamp & Unread Badge */}
+              <div className="flex flex-col items-end gap-1 shrink-0">
+                <span className="text-[11px] text-slate-500 font-medium">
+                  {thread.timestamp}
+                </span>
+                {thread.unreadCount && (
+                  <span className="min-w-[18px] h-4 px-1 rounded-full bg-rose-500 text-white font-black text-[10px] flex items-center justify-center shadow-sm">
+                    {thread.unreadCount}
+                  </span>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }

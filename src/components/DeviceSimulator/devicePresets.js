@@ -1,5 +1,15 @@
 export const DEVICE_PRESETS = [
   {
+    id: 'toptop-reference',
+    name: 'TopTop Real Device (471 × 1024)',
+    category: 'Reference',
+    width: 471,
+    height: 1024,
+    pixelRatio: 3.0,
+    cameraCutout: 'none',
+    borderRadius: 36,
+  },
+  {
     id: 'iphone-16-pro-max',
     name: 'iPhone 15 / 16 Pro Max',
     category: 'Apple',

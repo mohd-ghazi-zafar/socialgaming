@@ -23,7 +23,7 @@ export type RoomRole = 'host' | 'player' | 'spectator'
 
 export type VoiceState = 'off' | 'connected' | 'muted' | 'speaking'
 
-export type AppTab = 'home' | 'moment' | 'messages' | 'search' | 'account'
+export type AppTab = 'home' | 'room' | 'moment' | 'messages' | 'search' | 'account'
 
 /* ----------------------------------------------------------------------------
  * 2. AUTHORITATIVE REALTIME WEBSOCKET CONTRACTS

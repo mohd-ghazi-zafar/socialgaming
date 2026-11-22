@@ -6,6 +6,7 @@ import RegistrationScreen from './components/RegistrationScreen/RegistrationScre
 import IdLoginScreen from './components/IdLoginScreen/IdLoginScreen'
 import { AppLayout } from './components/layout/AppLayout'
 import { HomePage } from './pages/HomePage'
+import { RoomPage } from './pages/RoomPage'
 import { MomentPage } from './pages/MomentPage'
 import { MessagesPage } from './pages/MessagesPage'
 import { SearchPage } from './pages/SearchPage'
@@ -109,26 +110,34 @@ export default function App() {
             setCurrentTab('account')
           }}
         >
-          {/* Home Page: Banners + 4-Game Bento Grid + Rooms Lobby */}
+          {/* 1. TopTop Casual Games Home */}
           {currentTab === 'home' && (
             <HomePage
+              coins={coins}
               onJoinRoomSession={handleJoinRoomSession}
               onQuickMatchLaunch={handleQuickMatchLaunch}
+              onOpenWallet={() => setCurrentTab('account')}
+              onOpenSearch={() => alert('Search Players and Rooms')}
             />
           )}
 
-          {/* Moment Page: Vertical Reels Feed + Like / Comment / Share / Report */}
+          {/* 2. Room Explore Lobby */}
+          {currentTab === 'room' && (
+            <RoomPage onJoinRoom={handleJoinRoomSession} />
+          )}
+
+          {/* 3. Moments Feed */}
           {currentTab === 'moment' && <MomentPage />}
 
-          {/* Messages Page: Conversations Search + Realtime Thread + Create Group */}
+          {/* 4. Messages Thread */}
           {currentTab === 'messages' && <MessagesPage />}
 
-          {/* Search Page: Directory with Live Query Filter + Player Action Sheet */}
+          {/* Search Page fallback */}
           {currentTab === 'search' && (
             <SearchPage onStartMessageWithUser={handleStartMessageWithUser} />
           )}
 
-          {/* Account Page: VIP Profile + Sub-drawers (Wallet, Shop, VIP) + Settings */}
+          {/* 5. Me / Profile (Laraib Husain) */}
           {currentTab === 'account' && (
             <AccountPage
               user={authUser}
