@@ -1,5 +1,15 @@
 export const DEVICE_PRESETS = [
   {
+    id: 'iphone-16-pro-max',
+    name: 'iPhone 15 / 16 Pro Max',
+    category: 'Apple',
+    width: 430,
+    height: 932,
+    pixelRatio: 3.0,
+    cameraCutout: 'punch-hole-center',
+    borderRadius: 44,
+  },
+  {
     id: 'pixel-8-pro',
     name: 'Pixel 8 / 9 Pro',
     category: 'Google',

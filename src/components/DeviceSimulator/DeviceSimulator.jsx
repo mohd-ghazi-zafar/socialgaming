@@ -31,16 +31,16 @@ export default function DeviceSimulator({ children }) {
   const [forceNativeView, setForceNativeView] = useState(false)
 
   // Device Selection & Dimensions
-  const [selectedPresetId, setSelectedPresetId] = useState('pixel-8-pro')
-  const [customWidth, setCustomWidth] = useState(412)
-  const [customHeight, setCustomHeight] = useState(915)
+  const [selectedPresetId, setSelectedPresetId] = useState('iphone-16-pro-max')
+  const [customWidth, setCustomWidth] = useState(430)
+  const [customHeight, setCustomHeight] = useState(932)
   const [isLandscape, setIsLandscape] = useState(false)
 
   // Display & Simulation options
   const [scale, setScale] = useState(0.85)
   const [hasBezel, setHasBezel] = useState(true)
-  const [showStatusBar, setShowStatusBar] = useState(true)
-  const [navStyle, setNavStyle] = useState('gesture') // 'gesture' | 'buttons' | 'none'
+  const [showStatusBar, setShowStatusBar] = useState(false)
+  const [navStyle, setNavStyle] = useState('none') // 'gesture' | 'buttons' | 'none'
   const [currentTime, setCurrentTime] = useState('')
 
   const stageRef = useRef(null)
