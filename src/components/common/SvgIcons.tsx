@@ -34,6 +34,14 @@ export const FlagBH: React.FC<{ className?: string }> = ({ className = 'w-4 h-3'
   </svg>
 )
 
+export const FlagFR: React.FC<{ className?: string }> = ({ className = 'w-4 h-3' }) => (
+  <svg className={className} viewBox="0 0 640 480" xmlns="http://www.w3.org/2000/svg">
+    <path fill="#002654" d="M0 0h213.3v480H0z" />
+    <path fill="#fff" d="M213.3 0h213.4v480H213.3z" />
+    <path fill="#ed2939" d="M426.7 0H640v480H426.7z" />
+  </svg>
+)
+
 export const FlagEG: React.FC<{ className?: string }> = ({ className = 'w-4 h-3' }) => (
   <svg className={className} viewBox="0 0 640 480" xmlns="http://www.w3.org/2000/svg">
     <path fill="#ce1126" d="M0 0h640v160H0z" />
