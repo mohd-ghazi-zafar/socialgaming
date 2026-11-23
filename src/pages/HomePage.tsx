@@ -37,6 +37,10 @@ export const HomePage: React.FC<HomePageProps> = ({
       gameId === 'jackaroo'
     ) {
       onQuickMatchLaunch(gameId as GameType)
+    } else if (gameId === 'draw_guess') {
+      alert('🎨 Launching Draw & Guess lobby...')
+    } else if (gameId === 'more') {
+      alert('🎮 Opening All Games directory...')
     } else {
       alert(`Launching ${gameId.toUpperCase()} lobby...`)
     }
