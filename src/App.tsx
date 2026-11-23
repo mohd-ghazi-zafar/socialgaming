@@ -11,7 +11,7 @@ import { MomentPage } from './pages/MomentPage'
 import { MessagesPage } from './pages/MessagesPage'
 import { SearchPage } from './pages/SearchPage'
 import { AccountPage } from './pages/AccountPage'
-import { getStoredAuth, clearStoredAuth } from './services/api'
+import { getStoredAuth, setStoredAuth, clearStoredAuth } from './services/api'
 import type { AppTab, GameType, DirectoryUser } from './types/contracts'
 
 type ScreenState = 'splash' | 'main' | 'register' | 'id-login' | 'platform'
@@ -26,13 +26,18 @@ export default function App() {
   // Restore authenticated session from localStorage
   useEffect(() => {
     const stored = getStoredAuth()
-    if (stored?.user) {
+    if (stored?.user && stored?.token) {
       setAuthUser(stored.user)
+    } else {
+      setAuthUser(null)
     }
   }, [])
 
-  const handleAuthSuccess = (user: any, _token: string) => {
+  const handleAuthSuccess = (user: any, token: string) => {
     setAuthUser(user)
+    if (token) {
+      setStoredAuth(token, user, user?.user_uid || user?.unique_id)
+    }
     setCurrentScreen('platform')
   }
 
@@ -60,12 +65,19 @@ export default function App() {
 
   return (
     <DeviceSimulator>
-      {/* 1. Dual-Mode Splash Screen with Toggle Switcher */}
+      {/* 1. Vector Splash Screen */}
       {currentScreen === 'splash' && (
         <SplashScreen
           onFinish={() => {
-            // Smoothly transitions into the UADA Social Gaming Platform
-            setCurrentScreen('platform')
+            // Verify authenticated session: if logged in, go to platform; if logged out, go to login screen
+            const stored = getStoredAuth()
+            if (stored?.user && stored?.token) {
+              setAuthUser(stored.user)
+              setCurrentScreen('platform')
+            } else {
+              setAuthUser(null)
+              setCurrentScreen('main')
+            }
           }}
         />
       )}

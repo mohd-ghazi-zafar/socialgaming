@@ -1,12 +1,4 @@
 import React from 'react'
-import {
-  JackarooIllustration,
-  CarromIllustration,
-  OnoIllustration,
-  LudoKindIllustration,
-  MonopolyIllustration,
-  MoreGamesIllustration,
-} from '../common/GameCardIllustrations'
 
 interface GameCardsGridProps {
   onSelectGame: (gameId: string) => void
@@ -15,134 +7,90 @@ interface GameCardsGridProps {
 interface GameCardConfig {
   id: string
   name: string
-  subtitle?: string
-  isNew?: boolean
-  bgGradient: string
-  bottomBg: string
+  image: string
   borderColor: string
-  Illustration: React.FC<{ className?: string }>
+  glowColor: string
+  titleGradient: string
+  tag?: string
 }
 
 export const GameCardsGrid: React.FC<GameCardsGridProps> = ({ onSelectGame }) => {
   const cards: GameCardConfig[] = [
     {
+      id: 'ludo',
+      name: 'Ludo',
+      image: '/games/ludo.jpg',
+      borderColor: 'border-cyan-500/60 hover:border-cyan-400',
+      glowColor: 'shadow-cyan-500/20',
+      titleGradient: 'text-cyan-300 drop-shadow-[0_0_12px_rgba(34,211,238,0.8)]',
+      tag: 'Classic',
+    },
+    {
+      id: 'chess',
+      name: 'Chess',
+      image: '/games/chess.jpg',
+      borderColor: 'border-emerald-500/60 hover:border-emerald-400',
+      glowColor: 'shadow-emerald-500/20',
+      titleGradient: 'text-emerald-300 drop-shadow-[0_0_12px_rgba(52,211,153,0.8)]',
+      tag: 'Strategy',
+    },
+    {
+      id: 'domino',
+      name: 'Domino',
+      image: '/games/domino.jpg',
+      borderColor: 'border-amber-500/60 hover:border-amber-400',
+      glowColor: 'shadow-amber-500/20',
+      titleGradient: 'text-amber-300 drop-shadow-[0_0_12px_rgba(251,191,36,0.8)]',
+      tag: 'Popular',
+    },
+    {
       id: 'jackaroo',
       name: 'Jackaroo',
-      isNew: true,
-      bgGradient: 'from-[#f59e0b] via-[#d97706] to-[#78350f]',
-      bottomBg: 'bg-[#a15112]/90',
-      borderColor: '#fbbf24',
-      Illustration: JackarooIllustration,
-    },
-    {
-      id: 'carrom',
-      name: 'Carrom',
-      isNew: false,
-      bgGradient: 'from-[#c084fc] via-[#9333ea] to-[#581c87]',
-      bottomBg: 'bg-[#7e22ce]/90',
-      borderColor: '#e9d5ff',
-      Illustration: CarromIllustration,
-    },
-    {
-      id: 'ono',
-      name: 'ONO',
-      subtitle: 'No Mercy',
-      isNew: false,
-      bgGradient: 'from-[#f87171] via-[#dc2626] to-[#7f1d1d]',
-      bottomBg: 'bg-[#b91c1c]/90',
-      borderColor: '#fca5a5',
-      Illustration: OnoIllustration,
-    },
-    {
-      id: 'ludo',
-      name: 'LudoKind',
-      isNew: true,
-      bgGradient: 'from-[#818cf8] via-[#4f46e5] to-[#312e81]',
-      bottomBg: 'bg-[#4338ca]/90',
-      borderColor: '#c7d2fe',
-      Illustration: LudoKindIllustration,
-    },
-    {
-      id: 'monopoly',
-      name: 'Monopoly',
-      isNew: true,
-      bgGradient: 'from-[#38bdf8] via-[#0284c7] to-[#075985]',
-      bottomBg: 'bg-[#0369a1]/90',
-      borderColor: '#bae6fd',
-      Illustration: MonopolyIllustration,
-    },
-    {
-      id: 'more',
-      name: 'More Games',
-      isNew: false,
-      bgGradient: 'from-[#fbbf24] via-[#f59e0b] to-[#b45309]',
-      bottomBg: 'bg-[#b45309]/90',
-      borderColor: '#fde68a',
-      Illustration: MoreGamesIllustration,
+      image: '/games/jackaroo.jpg',
+      borderColor: 'border-pink-500/60 hover:border-pink-400',
+      glowColor: 'shadow-pink-500/20',
+      titleGradient: 'text-pink-300 drop-shadow-[0_0_12px_rgba(244,114,182,0.8)]',
+      tag: 'Trending',
     },
   ]
 
   return (
-    <div className="w-full px-3.5 py-1">
-      <div className="grid grid-cols-3 gap-2.5 w-full">
-        {cards.map((card) => {
-          const { Illustration } = card
+    <div className="w-full px-3.5 py-1 select-none">
+      {/* 2x2 Grid Layout for the 4 Dedicated Games */}
+      <div className="grid grid-cols-2 gap-3 w-full">
+        {cards.map((card) => (
+          <button
+            key={card.id}
+            type="button"
+            onClick={() => onSelectGame(card.id)}
+            className={`group relative w-full aspect-[1/1.08] rounded-2xl overflow-hidden bg-[#071d18] border-2 ${card.borderColor} ${card.glowColor} shadow-lg hover:shadow-xl transition-all duration-200 cursor-pointer active:scale-95 flex flex-col justify-between focus:outline-none`}
+          >
+            {/* Crisp 3D Game Card Image */}
+            <div className="absolute inset-0 overflow-hidden">
+              <img
+                src={card.image}
+                alt={card.name}
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+              />
+              {/* Subtle Bottom Vignette for Crisp Contrast */}
+              <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/90 via-black/40 to-transparent pointer-events-none" />
+            </div>
 
-          return (
-            <button
-              key={card.id}
-              type="button"
-              onClick={() => onSelectGame(card.id)}
-              className="relative w-full aspect-[137/178] rounded-[20px] overflow-hidden flex flex-col justify-between transition-all duration-200 cursor-pointer active:scale-95 hover:scale-[1.02] shadow-lg group focus:outline-none"
-              style={{
-                boxShadow: `0 4px 14px -2px rgba(0,0,0,0.5), inset 0 0 0 1.5px ${card.borderColor}80`,
-              }}
-            >
-              {/* Outer Arabesque Background Gradient */}
-              <div className={`absolute inset-0 bg-gradient-to-b ${card.bgGradient} opacity-95 group-hover:opacity-100 transition-opacity`} />
+            {/* Top Tag Pill */}
+            <div className="relative z-10 p-2 flex justify-end">
+              <span className="bg-black/60 backdrop-blur-xs text-[9.5px] font-black uppercase tracking-wider text-white/90 px-2 py-0.5 rounded-full border border-white/20 shadow-xs">
+                {card.tag}
+              </span>
+            </div>
 
-              {/* Decorative Arabesque Top Arch Crown (SVG) */}
-              <div className="absolute top-0 inset-x-0 h-6 pointer-events-none opacity-80">
-                <svg className="w-full h-full" viewBox="0 0 100 24" preserveAspectRatio="none">
-                  {/* Scalloped Arch Crest */}
-                  <path
-                    d="M0 0 H100 V12 Q85 10 75 16 Q50 6 25 16 Q15 10 0 12 Z"
-                    fill="#ffffff"
-                    fillOpacity="0.15"
-                  />
-                  <path
-                    d="M50 0 L52 4 L50 7 L48 4 Z"
-                    fill="#fef08a"
-                  />
-                </svg>
-              </div>
-
-              {/* 3D Game Graphic Illustration */}
-              <div className="relative z-10 w-full flex-1 flex items-center justify-center p-1.5 pt-3">
-                <Illustration className="w-full h-full object-contain filter drop-shadow(0 4px 6px rgba(0,0,0,0.35))" />
-              </div>
-
-              {/* Bottom Label Panel */}
-              <div className={`relative z-10 w-full py-1.5 px-1 ${card.bottomBg} backdrop-blur-xs border-t border-white/20 flex flex-col items-center justify-center`}>
-                {card.subtitle && (
-                  <span className="text-[9px] font-black uppercase text-amber-200 tracking-tight leading-none mb-0.5">
-                    {card.subtitle}
-                  </span>
-                )}
-                <span className="text-[12px] font-black text-white tracking-tight drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] leading-tight text-center">
-                  {card.name}
-                </span>
-              </div>
-
-              {/* "New" Badge Pill */}
-              {card.isNew && (
-                <div className="absolute top-1 left-1.5 z-20 bg-gradient-to-r from-rose-500 to-pink-500 text-white font-black text-[9px] px-1.5 py-0.2 rounded-full shadow-md tracking-tight leading-tight">
-                  New
-                </div>
-              )}
-            </button>
-          )
-        })}
+            {/* Bottom Stylized Neon Game Title */}
+            <div className="relative z-10 w-full pb-2.5 pt-1 px-2 text-center">
+              <span className={`text-[17px] font-black tracking-tight ${card.titleGradient} block font-sans`}>
+                {card.name}
+              </span>
+            </div>
+          </button>
+        ))}
       </div>
     </div>
   )

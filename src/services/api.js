@@ -52,6 +52,8 @@ export function setStoredAuth(token, user, unique_id) {
 export function clearStoredAuth() {
   try {
     localStorage.removeItem(AUTH_STORAGE_KEY)
+    localStorage.removeItem('uada_splash_mode')
+    sessionStorage.clear()
   } catch (e) {
     console.error('Failed to clear auth:', e)
   }

@@ -18,7 +18,7 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { FlagEG } from '../components/common/SvgIcons'
-import { getStoredAuth, setStoredAuth, getAuthToken, viewAllUsers, editUser } from '../services/api'
+import { getStoredAuth, setStoredAuth, clearStoredAuth, getAuthToken, viewAllUsers, editUser } from '../services/api'
 
 interface AccountPageProps {
   user?: any
@@ -370,7 +370,10 @@ export const AccountPage: React.FC<AccountPageProps> = ({
         {onLogout && (
           <button
             type="button"
-            onClick={onLogout}
+            onClick={() => {
+              clearStoredAuth()
+              onLogout()
+            }}
             className="w-full mt-4 bg-rose-950/40 hover:bg-rose-900/60 active:scale-98 border border-rose-800/40 rounded-xl px-4 py-3 flex items-center justify-center gap-2 text-rose-300 font-bold text-sm transition-all cursor-pointer shadow-md"
           >
             <LogOut className="w-4 h-4" />

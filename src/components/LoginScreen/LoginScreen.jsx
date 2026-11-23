@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Mail, RotateCcw, UserPlus, LogIn, Loader2 } from 'lucide-react'
+import { Mail, UserPlus, LogIn, Loader2 } from 'lucide-react'
 import appLogo from '/logo-cutout.png'
 import { socialAuth } from '../../services/api'
 import './LoginScreen.css'
@@ -53,17 +53,8 @@ export default function LoginScreen({
       {/* Toast popup */}
       {toastMessage && <div className="login-toast">{toastMessage}</div>}
 
-      {/* Top Bar: Replay Splash & Need Help */}
-      <div className="login-top-bar">
-        <button
-          className="replay-splash-pill"
-          onClick={onReplaySplash}
-          title="Replay Splash Screen"
-        >
-          <RotateCcw size={11} />
-          <span>Splash</span>
-        </button>
-
+      {/* Top Bar: Need Help */}
+      <div className="login-top-bar" style={{ justifyContent: 'flex-end' }}>
         <button
           className="need-help-btn"
           onClick={() => showToast('Support: support@uada-gaming.com')}
