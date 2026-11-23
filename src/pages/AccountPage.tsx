@@ -14,11 +14,10 @@ import {
   ShoppingBag,
   ChevronRight,
   LogOut,
-  X,
-  Sparkles,
 } from 'lucide-react'
 import { FlagEG } from '../components/common/SvgIcons'
-import { getStoredAuth, setStoredAuth, clearStoredAuth, getAuthToken, viewAllUsers, editUser } from '../services/api'
+import { getStoredAuth, setStoredAuth, clearStoredAuth, getAuthToken, viewAllUsers } from '../services/api'
+import { EditProfilePage } from './EditProfilePage'
 
 interface AccountPageProps {
   user?: any
@@ -50,17 +49,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
     return user || getStoredAuth()?.user || null
   })
   const [copiedId, setCopiedId] = useState(false)
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
-  const [editName, setEditName] = useState('')
-  const [editGender, setEditGender] = useState('male')
-  const [editAge, setEditAge] = useState('24')
-  const [isSaving, setIsSaving] = useState(false)
-  const [toastMsg, setToastMsg] = useState('')
-
-  const showToast = (msg: string) => {
-    setToastMsg(msg)
-    setTimeout(() => setToastMsg(''), 2500)
-  }
+  const [isEditingProfile, setIsEditingProfile] = useState(false)
 
   // Sync when prop updates
   useEffect(() => {
@@ -111,50 +100,20 @@ export const AccountPage: React.FC<AccountPageProps> = ({
   }
 
   const handleOpenEdit = () => {
-    setEditName(displayName)
-    setEditGender(currentUser?.gender || 'male')
-    setEditAge(String(currentUser?.age || 24))
-    setIsEditModalOpen(true)
+    setIsEditingProfile(true)
   }
 
-  const handleSaveProfile = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!editName.trim()) return
-
-    setIsSaving(true)
-    const token = getAuthToken()
-
-    const updatedUser = {
-      ...currentUser,
-      name: editName.trim(),
-      gender: editGender,
-      age: parseInt(editAge, 10) || currentUser?.age || 24,
-    }
-
-    // 1. Instant Realtime Local State & Storage Update
-    setCurrentUser(updatedUser)
-    if (token) {
-      setStoredAuth(token, updatedUser, displayId)
-    }
-    onUpdateUser?.(updatedUser)
-
-    // 2. Realtime Database Synchronization via Backend API
-    if (token && currentUser?.id) {
-      try {
-        await editUser(currentUser.id, {
-          name: updatedUser.name,
-          gender: updatedUser.gender,
-          age: updatedUser.age,
-        }, token)
-      } catch (err: any) {
-        // Handled gracefully if backend controller is missing updateUser helper
-        console.debug('Backend profile sync note:', err.message)
-      }
-    }
-
-    setIsSaving(false)
-    setIsEditModalOpen(false)
-    showToast('Profile updated in real-time!')
+  if (isEditingProfile) {
+    return (
+      <EditProfilePage
+        user={currentUser}
+        onBack={() => setIsEditingProfile(false)}
+        onUpdateUser={(updated) => {
+          setCurrentUser(updated)
+          onUpdateUser?.(updated)
+        }}
+      />
+    )
   }
 
   const menuItems: MenuItem[] = [
@@ -227,13 +186,6 @@ export const AccountPage: React.FC<AccountPageProps> = ({
 
   return (
     <div className="relative w-full max-w-[471px] mx-auto select-none bg-[#031914] min-h-screen text-white pb-8">
-      {/* Toast Notification */}
-      {toastMsg && (
-        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 bg-emerald-500 text-black px-4 py-2 rounded-full font-bold text-xs shadow-2xl animate-fade-in">
-          {toastMsg}
-        </div>
-      )}
-
       {/* Profile Header Card */}
       <div className="px-4 pt-5 pb-3">
         <div className="flex items-center justify-between">
@@ -381,91 +333,6 @@ export const AccountPage: React.FC<AccountPageProps> = ({
           </button>
         )}
       </div>
-
-      {/* REALTIME EDIT PROFILE MODAL */}
-      {isEditModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4">
-          <div className="bg-[#0b2822] border border-emerald-600/40 rounded-2xl w-full max-w-[360px] p-5 shadow-2xl animate-scale-up">
-            <div className="flex items-center justify-between pb-3 border-b border-emerald-800/50 mb-4">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-teal-400" />
-                <h3 className="font-extrabold text-base text-white">Edit Profile</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsEditModalOpen(false)}
-                className="text-slate-400 hover:text-white p-1"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveProfile} className="space-y-3.5">
-              <div>
-                <label className="block text-xs font-bold text-slate-300 mb-1">
-                  Display Name
-                </label>
-                <input
-                  type="text"
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  placeholder="Enter your name"
-                  className="w-full bg-[#051c17] border border-emerald-700/60 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-teal-400"
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2.5">
-                <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">
-                    Gender
-                  </label>
-                  <select
-                    value={editGender}
-                    onChange={(e) => setEditGender(e.target.value)}
-                    className="w-full bg-[#051c17] border border-emerald-700/60 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-teal-400"
-                  >
-                    <option value="male">Male ♂</option>
-                    <option value="female">Female ♀</option>
-                    <option value="other">Other ✦</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-300 mb-1">
-                    Age
-                  </label>
-                  <input
-                    type="number"
-                    min="10"
-                    max="100"
-                    value={editAge}
-                    onChange={(e) => setEditAge(e.target.value)}
-                    className="w-full bg-[#051c17] border border-emerald-700/60 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-teal-400"
-                  />
-                </div>
-              </div>
-
-              <div className="pt-2 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsEditModalOpen(false)}
-                  className="px-3.5 py-2 rounded-xl text-xs font-bold text-slate-300 hover:bg-slate-800 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  className="px-4 py-2 bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 active:scale-95 text-black font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
-                >
-                  {isSaving ? 'Saving...' : 'Save Changes'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
