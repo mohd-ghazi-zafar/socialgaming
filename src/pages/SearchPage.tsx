@@ -237,34 +237,8 @@ export const SearchPage: React.FC<SearchPageProps> = ({
   }
 
   return (
-    <div className="relative w-full max-w-[471px] mx-auto min-h-screen bg-white text-[#1f2937] flex flex-col font-sans select-none overflow-x-hidden">
-      {/* 1. iOS-Style Top Status Bar */}
-      <div className="px-5 pt-3 pb-2 flex items-center justify-between text-xs font-semibold text-black">
-        <span className="tracking-tight text-[13px] font-bold">8:11</span>
-        <div className="flex items-center gap-1.5">
-          {/* Signal bars */}
-          <svg className="w-4 h-3.5 fill-current" viewBox="0 0 16 12">
-            <rect x="0" y="8" width="2.5" height="4" rx="0.5" />
-            <rect x="4" y="6" width="2.5" height="6" rx="0.5" />
-            <rect x="8" y="3" width="2.5" height="9" rx="0.5" />
-            <rect x="12" y="0" width="2.5" height="12" rx="0.5" />
-          </svg>
-          {/* Wi-Fi Icon */}
-          <svg className="w-4 h-3.5 fill-current" viewBox="0 0 16 12">
-            <path d="M8 9.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zM2.8 5.7a7.5 7.5 0 0 1 10.4 0l-1.4 1.4a5.5 5.5 0 0 0-7.6 0L2.8 5.7zM0 3a11.5 11.5 0 0 1 16 0l-1.4 1.4A9.5 9.5 0 0 0 1.4 4.4L0 3z" />
-          </svg>
-          {/* Battery Pill */}
-          <div className="flex items-center gap-0.5">
-            <div className="h-3 w-6 rounded-[4px] border border-black p-[1.5px] flex items-center justify-end">
-              <div className="h-full w-[49%] bg-black rounded-[1.5px]" />
-            </div>
-            <div className="h-1.5 w-[1.5px] bg-black rounded-r-sm" />
-            <span className="text-[10px] ml-0.5 font-bold">49</span>
-          </div>
-        </div>
-      </div>
-
-      {/* 2. Top Search Bar with Cancel Action */}
+    <div className="relative w-full max-w-[471px] mx-auto min-h-screen bg-white text-[#1f2937] flex flex-col font-sans select-none overflow-x-hidden pt-2">
+      {/* Top Search Bar with Cancel Action */}
       <div className="px-4 py-2 flex items-center gap-3">
         <div className="flex-1 flex items-center gap-2 bg-[#f4f5f7] rounded-full px-3.5 py-2">
           <SearchIcon className="w-4 h-4 text-[#9ca3af] shrink-0 stroke-[2.2]" />
