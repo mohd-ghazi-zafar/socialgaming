@@ -20,19 +20,31 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   unreadMessagesCount = 3,
   children,
 }) => {
+  const isSearch = currentTab === 'search'
+
   return (
-    <div className="relative min-h-screen bg-[#031914] text-white flex flex-col antialiased select-none font-sans overflow-x-hidden">
+    <div
+      className={`relative min-h-screen ${
+        isSearch ? 'bg-white text-slate-800' : 'bg-[#031914] text-white'
+      } flex flex-col antialiased select-none font-sans overflow-x-hidden`}
+    >
       {/* Main Viewport Content */}
-      <main className="flex-1 w-full max-w-[471px] mx-auto overflow-y-auto pb-[76px] px-0 pt-0">
+      <main
+        className={`flex-1 w-full max-w-[471px] mx-auto overflow-y-auto ${
+          isSearch ? 'pb-0' : 'pb-[76px]'
+        } px-0 pt-0`}
+      >
         {children}
       </main>
 
-      {/* Pure Coded Bottom 5-Tab Navigation Bar with Real SVGs */}
-      <BottomNavBar
-        currentTab={currentTab}
-        onTabChange={onTabChange}
-        unreadMessagesCount={unreadMessagesCount}
-      />
+      {/* Pure Coded Bottom 5-Tab Navigation Bar with Real SVGs (Hidden on full-screen Search) */}
+      {!isSearch && (
+        <BottomNavBar
+          currentTab={currentTab}
+          onTabChange={onTabChange}
+          unreadMessagesCount={unreadMessagesCount}
+        />
+      )}
     </div>
   )
 }

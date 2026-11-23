@@ -35,11 +35,13 @@ interface MenuItem {
   isUnread?: boolean
 }
 
-export const AccountPage: React.FC<AccountPageProps> = ({ onLogout }) => {
+export const AccountPage: React.FC<AccountPageProps> = ({ user, onLogout }) => {
   const [copiedId, setCopiedId] = useState(false)
+  const displayName = user?.name || 'Laraib Husain'
+  const displayId = user?.user_uid || user?.unique_id || '117215436'
 
   const handleCopyId = () => {
-    navigator.clipboard.writeText('117215436')
+    navigator.clipboard.writeText(displayId)
     setCopiedId(true)
     setTimeout(() => setCopiedId(false), 2000)
   }
@@ -129,7 +131,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({ onLogout }) => {
             <div className="flex flex-col gap-0.5">
               <div className="flex items-center gap-1.5">
                 <span className="text-lg font-black text-white">
-                  Laraib Husain
+                  {displayName}
                 </span>
                 {/* Blue Verified Checkmark */}
                 <div className="w-4 h-4 rounded-full bg-sky-500 flex items-center justify-center text-white text-[10px] font-bold">
@@ -139,7 +141,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({ onLogout }) => {
 
               <div className="flex items-center gap-2">
                 <span className="text-xs text-slate-400 font-mono">
-                  ID:117215436
+                  ID:{displayId}
                 </span>
                 <button
                   type="button"

@@ -11,7 +11,7 @@
  * 1. CORE GAMES & ROLE-BASED ACCESS CONTROL (RBAC)
  * ---------------------------------------------------------------------------- */
 
-export type GameType = 'ludo' | 'chess' | 'domino' | 'jackaroo'
+export type GameType = 'ludo' | 'chess' | 'domino' | 'jackaroo' | 'carrom' | 'ono'
 
 /**
  * RBAC Table hierarchy:
@@ -243,3 +243,73 @@ export interface ShopItem {
   icon: string
   popular?: boolean
 }
+
+/* ----------------------------------------------------------------------------
+ * 9. BACKEND AUTH, REPORT, FOLLOW & BLOCK CONTRACTS
+ * ---------------------------------------------------------------------------- */
+
+export interface AuthUser {
+  id: number | string
+  user_uid: string
+  role: 'user' | 'admin'
+  auth_provider: 'phone' | 'google' | 'apple' | 'facebook' | 'snapchat'
+  provider_id?: string | null
+  phone_number?: string | null
+  email?: string | null
+  name: string
+  gender?: string | null
+  age?: number | null
+  profile_image?: string | null
+  is_verified?: boolean
+  created_at?: string
+  updated_at?: string
+}
+
+export interface AuthResponse {
+  message: string
+  unique_id?: string
+  token?: string
+  user?: AuthUser
+  phone_number?: string
+  otp?: string
+}
+
+export interface ReportPayload {
+  reason: string
+  description?: string
+}
+
+export interface ReportResponse {
+  message: string
+  totalReportsAgainstUser?: number
+  data?: {
+    id: number
+    reporter_id: number
+    reported_user_id: number
+    reason: string
+    description?: string | null
+    status: string
+    is_banned: boolean
+    created_at: string
+  }
+}
+
+export interface FollowStatsResponse {
+  message: string
+  stats: {
+    followers: number
+    following: number
+  }
+}
+
+export interface FollowStatusResponse {
+  message: string
+  isFollowing: boolean
+  requestStatus: 'pending' | 'accepted' | 'rejected' | null
+}
+
+export interface BlockStatusResponse {
+  message: string
+  isBlocked: boolean
+}
+

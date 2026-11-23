@@ -117,13 +117,16 @@ export default function App() {
               onJoinRoomSession={handleJoinRoomSession}
               onQuickMatchLaunch={handleQuickMatchLaunch}
               onOpenWallet={() => setCurrentTab('account')}
-              onOpenSearch={() => alert('Search Players and Rooms')}
+              onOpenSearch={() => setCurrentTab('search')}
             />
           )}
 
           {/* 2. Room Explore Lobby */}
           {currentTab === 'room' && (
-            <RoomPage onJoinRoom={handleJoinRoomSession} />
+            <RoomPage
+              onJoinRoom={handleJoinRoomSession}
+              onOpenSearch={() => setCurrentTab('search')}
+            />
           )}
 
           {/* 3. Moments Feed */}
@@ -132,9 +135,13 @@ export default function App() {
           {/* 4. Messages Thread */}
           {currentTab === 'messages' && <MessagesPage />}
 
-          {/* Search Page fallback */}
+          {/* 5. Search Page Screen (Search by Userid / Room id & Social Friends) */}
           {currentTab === 'search' && (
-            <SearchPage onStartMessageWithUser={handleStartMessageWithUser} />
+            <SearchPage
+              onCancel={() => setCurrentTab('home')}
+              onStartMessageWithUser={handleStartMessageWithUser}
+              onJoinRoom={handleJoinRoomSession}
+            />
           )}
 
           {/* 5. Me / Profile (Laraib Husain) */}

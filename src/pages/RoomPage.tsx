@@ -4,6 +4,7 @@ import { FlagUS } from '../components/common/SvgIcons'
 
 interface RoomPageProps {
   onJoinRoom?: (roomId: string) => void
+  onOpenSearch?: () => void
 }
 
 interface VoiceRoomItem {
@@ -21,7 +22,7 @@ interface VoiceRoomItem {
   isHourlyTop?: boolean
 }
 
-export const RoomPage: React.FC<RoomPageProps> = ({ onJoinRoom }) => {
+export const RoomPage: React.FC<RoomPageProps> = ({ onJoinRoom, onOpenSearch }) => {
   const [activeFilter, setActiveFilter] = useState<'Recommend' | 'Game' | 'PK' | 'Super Winner'>('Recommend')
 
   const rooms: VoiceRoomItem[] = [
@@ -110,13 +111,18 @@ export const RoomPage: React.FC<RoomPageProps> = ({ onJoinRoom }) => {
           <button type="button" className="text-purple-400 hover:scale-110 transition-transform cursor-pointer" title="Party">
             <PartyPopper className="w-5 h-5" />
           </button>
-          <button type="button" className="text-slate-300 hover:text-white transition-colors cursor-pointer" title="Search">
+          <button
+            type="button"
+            onClick={onOpenSearch || (() => alert('Search Rooms'))}
+            className="text-slate-300 hover:text-white transition-colors cursor-pointer"
+            title="Search"
+          >
             <Search className="w-5 h-5" />
           </button>
         </div>
       </div>
 
-      {/* Moroccan National Day Promo Event Banner */}
+      {/* Event Banner (Celebration fallback while /api/banner is commented out) */}
       <div className="p-3">
         <div className="relative w-full rounded-2xl overflow-hidden bg-gradient-to-r from-red-900 via-rose-950 to-amber-950 p-4 border border-amber-500/40 shadow-xl flex flex-col justify-between min-h-[110px]">
           <div className="relative z-10 flex items-center justify-between">

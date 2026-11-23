@@ -92,7 +92,7 @@ export const FindFriendSection: React.FC<FindFriendSectionProps> = ({ onJoinRoom
                   </span>
 
                   {/* Badges Row - Clean and compact, zero scrollbar */}
-                  <div className="flex items-center gap-1 flex-wrap">
+                  <div className="flex items-center gap-1 flex-nowrap overflow-hidden no-scrollbar">
                     {/* Country Flag */}
                     <div className="rounded-[2px] overflow-hidden shadow-xs shrink-0">
                       <Flag className="w-4 h-3 object-cover block" />
