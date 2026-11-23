@@ -7,6 +7,7 @@ import { CreateRoomModal } from '../components/rooms/CreateRoomModal'
 import type { CreateRoomConfig, GameType } from '../types/contracts'
 
 interface HomePageProps {
+  user?: any
   coins?: number
   onJoinRoomSession: (roomId: string, pin?: string) => void
   onQuickMatchLaunch: (game: GameType) => void
@@ -15,6 +16,7 @@ interface HomePageProps {
 }
 
 export const HomePage: React.FC<HomePageProps> = ({
+  user,
   coins = 0,
   onJoinRoomSession,
   onQuickMatchLaunch,
@@ -44,6 +46,7 @@ export const HomePage: React.FC<HomePageProps> = ({
     <div className="relative w-full max-w-[471px] mx-auto select-none bg-[#031914] min-h-full">
       {/* 1. Authentic TopTop Header Bar with Real SVGs & Interactive Controls */}
       <TopTopHeader
+        user={user}
         coins={coins}
         onWalletClick={onOpenWallet}
         onGiftClick={() => alert('🎁 Daily Lucky Gift: +500 Coins Collected!')}

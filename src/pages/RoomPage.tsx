@@ -1,17 +1,19 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Flame, PartyPopper, Search, Volume2 } from 'lucide-react'
-import { FlagUS } from '../components/common/SvgIcons'
+import { viewAllUsers, getAuthToken, normalizeImageUrl } from '../services/api'
+import { FlagSA, FlagEG } from '../components/common/SvgIcons'
 
 interface RoomPageProps {
   onJoinRoom?: (roomId: string) => void
   onOpenSearch?: () => void
 }
 
-interface VoiceRoomItem {
+interface DynamicVoiceRoom {
   id: string
   title: string
   subtitle?: string
-  avatarText: string
+  avatarInitial: string
+  avatarImage?: string | null
   avatarBg: string
   countryFlag?: React.FC<{ className?: string }>
   pkBadge?: boolean
@@ -24,66 +26,59 @@ interface VoiceRoomItem {
 
 export const RoomPage: React.FC<RoomPageProps> = ({ onJoinRoom, onOpenSearch }) => {
   const [activeFilter, setActiveFilter] = useState<'Recommend' | 'Game' | 'PK' | 'Super Winner'>('Recommend')
+  const [rooms, setRooms] = useState<DynamicVoiceRoom[]>([])
+  const [isLoading, setIsLoading] = useState(true)
 
-  const rooms: VoiceRoomItem[] = [
-    {
-      id: 'room-1',
-      title: 'مثل العصر مره 🌷',
-      subtitle: 'فرش عن الجلسات التي هجرتها ..',
-      avatarText: '👧',
-      avatarBg: 'bg-gradient-to-tr from-amber-700 to-rose-900',
-      countryFlag: FlagUS,
-      pkBadge: true,
-      tierBadge: 'Silver',
-      tierColor: 'bg-slate-400 text-slate-900',
-      levelTag: 'Lv.23',
-      listenersCount: 34,
-    },
-    {
-      id: 'room-2',
-      title: 'كتيبة التعناع 🥰❤️',
-      avatarText: '🎭',
-      avatarBg: 'bg-gradient-to-tr from-slate-900 to-zinc-800',
-      levelTag: 'Lv.11',
-      listenersCount: 17,
-    },
-    {
-      id: 'room-3',
-      title: 'فخر العرب 🦅',
-      subtitle: 'لا تهان العصات قبل انتهاء الجولة',
-      avatarText: '👑',
-      avatarBg: 'bg-gradient-to-tr from-amber-600 to-yellow-800',
-      pkBadge: true,
-      isHourlyTop: true,
-      tierBadge: 'Legend',
-      tierColor: 'bg-gradient-to-r from-amber-400 to-yellow-500 text-amber-950',
-      levelTag: 'Lv.103',
-      listenersCount: 38,
-    },
-    {
-      id: 'room-4',
-      title: 'بذكر الله تحلم الحياة 🕊️',
-      subtitle: 'استمع يامن كشفت عليلك الدنيا ...',
-      avatarText: '🕌',
-      avatarBg: 'bg-gradient-to-tr from-emerald-950 to-teal-900',
-      pkBadge: true,
-      levelTag: 'Lv.95',
-      listenersCount: 24,
-    },
-    {
-      id: 'room-5',
-      title: 'تحديات بنت اب 🥰',
-      subtitle: 'هنا الذوق ❤️',
-      avatarText: '💃',
-      avatarBg: 'bg-gradient-to-tr from-pink-900 to-purple-900',
-      countryFlag: FlagUS,
-      pkBadge: true,
-      tierBadge: 'Silver',
-      tierColor: 'bg-slate-400 text-slate-900',
-      levelTag: 'Lv.109',
-      listenersCount: 21,
-    },
-  ]
+  // Fetch real users from backend database to dynamically populate active rooms
+  useEffect(() => {
+    const token = getAuthToken()
+    if (!token) {
+      setIsLoading(false)
+      return
+    }
+
+    viewAllUsers(token)
+      .then((res) => {
+        if (res?.users && Array.isArray(res.users)) {
+          const generated: DynamicVoiceRoom[] = res.users.map((u: any, idx: number) => {
+            const initial = u.name ? u.name.trim().charAt(0).toUpperCase() : 'U'
+            const avatarImg = normalizeImageUrl(u.profile_image)
+            const isMale = u.gender === 'male'
+
+            return {
+              id: `room-${u.user_uid}`,
+              title: `${u.name}'s Arena`,
+              subtitle: `Table #${u.user_uid} • ${u.auth_provider || 'player'}`,
+              avatarInitial: initial,
+              avatarImage: avatarImg,
+              avatarBg:
+                idx % 3 === 0
+                  ? 'bg-gradient-to-tr from-amber-700 to-rose-900'
+                  : idx % 3 === 1
+                  ? 'bg-gradient-to-tr from-slate-900 to-zinc-800'
+                  : 'bg-gradient-to-tr from-emerald-950 to-teal-900',
+              countryFlag: isMale ? FlagEG : FlagSA,
+              pkBadge: idx % 2 === 0,
+              tierBadge: idx === 0 ? 'Legend' : 'Silver',
+              tierColor:
+                idx === 0
+                  ? 'bg-gradient-to-r from-amber-400 to-yellow-500 text-amber-950'
+                  : 'bg-slate-400 text-slate-900',
+              levelTag: `Lv.${u.age || 25}`,
+              listenersCount: 15 + (u.id * 7) % 85,
+              isHourlyTop: idx === 0,
+            }
+          })
+          setRooms(generated)
+        }
+      })
+      .catch((err) => {
+        console.debug('Failed to fetch rooms from backend:', err.message)
+      })
+      .finally(() => {
+        setIsLoading(false)
+      })
+  }, [])
 
   return (
     <div className="relative w-full max-w-[471px] mx-auto select-none bg-[#031914] min-h-screen text-white pb-6">
@@ -103,19 +98,32 @@ export const RoomPage: React.FC<RoomPageProps> = ({ onJoinRoom, onOpenSearch }) 
           </button>
         </div>
 
-        {/* Right Icon Actions */}
+        {/* Right Action Icons: News, Party Popper, Search */}
         <div className="flex items-center gap-3">
-          <button type="button" className="text-amber-400 hover:scale-110 transition-transform cursor-pointer" title="News">
-            <Flame className="w-5 h-5 fill-current" />
-          </button>
-          <button type="button" className="text-purple-400 hover:scale-110 transition-transform cursor-pointer" title="Party">
-            <PartyPopper className="w-5 h-5" />
-          </button>
           <button
             type="button"
-            onClick={onOpenSearch || (() => alert('Search Rooms'))}
+            onClick={() => alert('Platform Events & Updates')}
+            className="flex items-center gap-1 text-xs text-amber-400 font-extrabold cursor-pointer hover:scale-105 transition-transform"
+            title="News"
+          >
+            <Flame className="w-4 h-4 text-orange-500 animate-bounce" />
+            <span className="text-[10px] uppercase tracking-wider">News</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => alert('Celebration Arena')}
+            className="text-fuchsia-400 hover:text-fuchsia-300 transition-colors cursor-pointer"
+            title="Party"
+          >
+            <PartyPopper className="w-4 h-4" />
+          </button>
+
+          <button
+            type="button"
+            onClick={onOpenSearch}
             className="text-slate-300 hover:text-white transition-colors cursor-pointer"
-            title="Search"
+            title="Search Rooms"
           >
             <Search className="w-5 h-5" />
           </button>
@@ -191,76 +199,97 @@ export const RoomPage: React.FC<RoomPageProps> = ({ onJoinRoom, onOpenSearch }) 
         })}
       </div>
 
+      {/* Loading State */}
+      {isLoading && (
+        <div className="w-full py-8 flex items-center justify-center gap-2 text-xs text-emerald-400">
+          <div className="w-3.5 h-3.5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+          <span>Loading rooms from server...</span>
+        </div>
+      )}
+
+      {/* Empty State */}
+      {!isLoading && rooms.length === 0 && (
+        <div className="w-full mx-auto px-4 py-8 text-center text-slate-400 text-xs">
+          No live rooms found. Start your own private room above!
+        </div>
+      )}
+
       {/* Voice Room Cards List */}
-      <div className="space-y-2.5 px-3 pt-2">
-        {rooms.map((room) => {
-          const Flag = room.countryFlag
+      {!isLoading && rooms.length > 0 && (
+        <div className="space-y-2.5 px-3 pt-2">
+          {rooms.map((room) => {
+            const Flag = room.countryFlag
 
-          return (
-            <div
-              key={room.id}
-              onClick={() => onJoinRoom?.(room.id)}
-              className={`w-full rounded-2xl p-3 flex items-center justify-between cursor-pointer transition-all duration-150 active:scale-[0.99] shadow-md ${
-                room.isHourlyTop
-                  ? 'bg-gradient-to-r from-amber-950/80 via-[#172017] to-amber-950/80 border border-amber-500/60 shadow-amber-950/40'
-                  : 'bg-[#09221d]/90 hover:bg-[#0d2d27] border border-emerald-800/30'
-              }`}
-            >
-              {/* Left Column: Avatar & Room Info */}
-              <div className="flex items-center gap-3 min-w-0 flex-1 mr-2">
-                <div className={`w-12 h-12 rounded-2xl ${room.avatarBg} flex items-center justify-center text-2xl shadow-inner shrink-0 ring-1 ring-white/10`}>
-                  {room.avatarText}
-                </div>
-
-                <div className="flex flex-col gap-1 min-w-0 flex-1">
-                  {/* Title Row with Flag and PK */}
-                  <div className="flex items-center gap-1.5">
-                    {Flag && <Flag className="w-4 h-3 rounded-xs shrink-0" />}
-                    <span className="text-[13px] font-black text-white truncate leading-tight">
-                      {room.title}
-                    </span>
-                    {room.pkBadge && (
-                      <span className="bg-gradient-to-r from-rose-500 to-indigo-600 text-white text-[9px] font-black px-1.5 py-0.2 rounded-sm shadow-xs shrink-0">
-                        PK
-                      </span>
+            return (
+              <div
+                key={room.id}
+                onClick={() => onJoinRoom?.(room.id)}
+                className={`w-full rounded-2xl p-3 flex items-center justify-between cursor-pointer transition-all duration-150 active:scale-[0.99] shadow-md ${
+                  room.isHourlyTop
+                    ? 'bg-gradient-to-r from-amber-950/80 via-[#172017] to-amber-950/80 border border-amber-500/60 shadow-amber-950/40'
+                    : 'bg-[#09221d]/90 hover:bg-[#0d2d27] border border-emerald-800/30'
+                }`}
+              >
+                {/* Left Column: Avatar & Room Info */}
+                <div className="flex items-center gap-3 min-w-0 flex-1 mr-2">
+                  <div className={`w-12 h-12 rounded-2xl ${room.avatarBg} flex items-center justify-center text-xl font-black text-white shadow-inner shrink-0 ring-1 ring-white/10 overflow-hidden`}>
+                    {room.avatarImage ? (
+                      <img src={room.avatarImage} alt={room.title} className="w-full h-full object-cover" />
+                    ) : (
+                      <span>{room.avatarInitial}</span>
                     )}
                   </div>
 
-                  {/* Subtitle if available */}
-                  {room.subtitle && (
-                    <span className="text-[11px] text-slate-300 truncate">
-                      {room.subtitle}
-                    </span>
-                  )}
+                  <div className="flex flex-col gap-1 min-w-0 flex-1">
+                    {/* Title Row with Flag and PK */}
+                    <div className="flex items-center gap-1.5">
+                      {Flag && <Flag className="w-4 h-3 rounded-xs shrink-0" />}
+                      <span className="text-[13px] font-black text-white truncate leading-tight">
+                        {room.title}
+                      </span>
+                      {room.pkBadge && (
+                        <span className="bg-gradient-to-r from-rose-500 to-indigo-600 text-white text-[9px] font-black px-1.5 py-0.2 rounded-sm shadow-xs shrink-0">
+                          PK
+                        </span>
+                      )}
+                    </div>
 
-                  {/* Badges Row */}
-                  <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
-                    {room.tierBadge && (
-                      <span className={`text-[9px] font-black px-1.5 py-0.2 rounded-full ${room.tierColor}`}>
-                        {room.tierBadge}
+                    {/* Subtitle if available */}
+                    {room.subtitle && (
+                      <span className="text-[11px] text-slate-300 truncate">
+                        {room.subtitle}
                       </span>
                     )}
-                    <span className="bg-[#6b21a8]/80 text-amber-200 text-[9px] font-black px-1.5 py-0.2 rounded-full">
-                      {room.levelTag}
-                    </span>
-                    {room.isHourlyTop && (
-                      <span className="bg-amber-500 text-amber-950 text-[9px] font-extrabold px-1.5 py-0.2 rounded-full">
-                        Hourly Top 1
+
+                    {/* Badges Row */}
+                    <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                      {room.tierBadge && (
+                        <span className={`text-[9px] font-black px-1.5 py-0.2 rounded-full ${room.tierColor}`}>
+                          {room.tierBadge}
+                        </span>
+                      )}
+                      <span className="bg-[#6b21a8]/80 text-amber-200 text-[9px] font-black px-1.5 py-0.2 rounded-full">
+                        {room.levelTag}
                       </span>
-                    )}
+                      {room.isHourlyTop && (
+                        <span className="bg-amber-500 text-amber-950 text-[9px] font-extrabold px-1.5 py-0.2 rounded-full">
+                          Hourly Top 1
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Right Column: Audio Waves & Listener Count */}
-              <div className="flex items-center gap-1.5 text-teal-300 font-extrabold text-xs shrink-0 bg-[#061b17] px-2 py-1 rounded-lg border border-teal-800/30">
-                <Volume2 className="w-3.5 h-3.5 text-teal-400 animate-pulse" />
-                <span>{room.listenersCount}</span>
+                {/* Right Column: Audio Waves & Listener Count */}
+                <div className="flex items-center gap-1.5 text-teal-300 font-extrabold text-xs shrink-0 bg-[#061b17] px-2 py-1 rounded-lg border border-teal-800/30">
+                  <Volume2 className="w-3.5 h-3.5 text-teal-400 animate-pulse" />
+                  <span>{room.listenersCount}</span>
+                </div>
               </div>
-            </div>
-          )
-        })}
-      </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

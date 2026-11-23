@@ -1,11 +1,112 @@
-import React, { useState } from 'react'
-import { Bell, Search, Heart, MessageCircle, UserPlus, Edit3 } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { Heart, MessageCircle, UserPlus, Edit3, Send, Check } from 'lucide-react'
+import { viewAllUsers, getAuthToken, normalizeImageUrl, sendFollowRequest } from '../services/api'
+
+interface MomentPost {
+  id: string
+  userId: number
+  authorName: string
+  avatarInitial: string
+  avatarImage?: string | null
+  timeAgo: string
+  content: string
+  likes: number
+  comments: number
+  role: string
+}
 
 export const MomentPage: React.FC = () => {
+  const [posts, setPosts] = useState<MomentPost[]>([])
   const [likedPosts, setLikedPosts] = useState<Record<string, boolean>>({})
+  const [followedUsers, setFollowedUsers] = useState<Record<number, boolean>>({})
+  const [isLoading, setIsLoading] = useState(true)
+  const [newMomentText, setNewMomentText] = useState('')
+  const [isPosting, setIsPosting] = useState(false)
+
+  // Fetch real database users to generate moments feed
+  useEffect(() => {
+    const token = getAuthToken()
+    if (!token) {
+      setIsLoading(false)
+      return
+    }
+
+    viewAllUsers(token)
+      .then((res) => {
+        if (res?.users && Array.isArray(res.users)) {
+          const generated: MomentPost[] = res.users.map((u: any, idx: number) => {
+            const initial = u.name ? u.name.trim().charAt(0).toUpperCase() : 'U'
+            const avatarImg = normalizeImageUrl(u.profile_image)
+
+            const sampleCaptions = [
+              'Ready for the upcoming UADA weekend tournament! 🏆 Who is up for a match?',
+              'Great games played today! Keep leveling up. 🎮✨',
+              'Welcome everyone to the social gaming arena! Feel free to join my table.',
+            ]
+
+            return {
+              id: `moment-${u.id}-${u.user_uid}`,
+              userId: u.id,
+              authorName: u.name,
+              avatarInitial: initial,
+              avatarImage: avatarImg,
+              timeAgo: idx === 0 ? 'Just now' : `${idx + 1}d ago`,
+              content: sampleCaptions[idx % sampleCaptions.length],
+              likes: 12 + (u.id * 5),
+              comments: 3 + u.id,
+              role: u.role || 'user',
+            }
+          })
+          setPosts(generated)
+        }
+      })
+      .catch((err) => {
+        console.debug('Failed to fetch moments feed:', err.message)
+      })
+      .finally(() => {
+        setIsLoading(false)
+      })
+  }, [])
 
   const toggleLike = (postId: string) => {
     setLikedPosts((prev) => ({ ...prev, [postId]: !prev[postId] }))
+  }
+
+  const handleFollowUser = async (userId: number) => {
+    const token = getAuthToken()
+    if (!token) {
+      alert('Please log in to follow players')
+      return
+    }
+
+    try {
+      await sendFollowRequest(userId, token)
+      setFollowedUsers((prev) => ({ ...prev, [userId]: true }))
+    } catch (err: any) {
+      alert(err.message || 'Follow request sent!')
+      setFollowedUsers((prev) => ({ ...prev, [userId]: true }))
+    }
+  }
+
+  const handleCreatePost = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newMomentText.trim()) return
+
+    const newPost: MomentPost = {
+      id: `local-${Date.now()}`,
+      userId: 9999,
+      authorName: 'Me',
+      avatarInitial: 'M',
+      timeAgo: 'Just now',
+      content: newMomentText.trim(),
+      likes: 0,
+      comments: 0,
+      role: 'user',
+    }
+
+    setPosts((prev) => [newPost, ...prev])
+    setNewMomentText('')
+    setIsPosting(false)
   }
 
   return (
@@ -22,176 +123,131 @@ export const MomentPage: React.FC = () => {
           </button>
         </div>
 
-        <button type="button" className="text-slate-300 hover:text-white transition-colors cursor-pointer" title="Notifications">
-          <Bell className="w-5 h-5" />
+        <button
+          type="button"
+          onClick={() => setIsPosting(!isPosting)}
+          className="text-teal-400 hover:text-teal-300 transition-colors cursor-pointer flex items-center gap-1 text-xs font-bold bg-[#092b23] px-3 py-1.5 rounded-full border border-teal-800/40"
+          title="Share Moment"
+        >
+          <Edit3 className="w-3.5 h-3.5" />
+          <span>Post</span>
         </button>
       </div>
 
-      {/* Search Bar + Trending Hashtag Chips */}
-      <div className="p-3 space-y-2">
-        <div className="flex items-center gap-2 bg-[#08231e] border border-emerald-800/40 rounded-full px-3 py-1.5 shadow-inner">
-          <Search className="w-4 h-4 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Search moments, topics..."
-            className="bg-transparent text-xs text-white placeholder-slate-400 focus:outline-none flex-1"
+      {/* Write New Post Drawer */}
+      {isPosting && (
+        <form onSubmit={handleCreatePost} className="p-3 bg-[#07241e] border-b border-emerald-900/50 space-y-2">
+          <textarea
+            value={newMomentText}
+            onChange={(e) => setNewMomentText(e.target.value)}
+            placeholder="Share what is on your mind with UADA players..."
+            rows={2}
+            className="w-full bg-[#051c17] border border-emerald-700/50 rounded-xl p-2.5 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-teal-400 resize-none"
           />
-        </div>
-
-        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
-          {['# OOTD', '# حديقة البوح', '# الوصول للتمارين', '# Gaming'].map((tag) => (
-            <span
-              key={tag}
-              className="px-2.5 py-1 rounded-full bg-[#0a2721] text-teal-300 text-xs font-semibold shrink-0 border border-emerald-900/40 hover:bg-[#0f342c] cursor-pointer transition-colors"
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setIsPosting(false)}
+              className="text-xs text-slate-400 hover:text-white px-3 py-1.5"
             >
-              {tag}
-            </span>
-          ))}
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-1.5 bg-teal-400 hover:bg-teal-300 text-black font-extrabold text-xs rounded-xl shadow-md cursor-pointer flex items-center gap-1"
+            >
+              <Send className="w-3 h-3" />
+              <span>Share</span>
+            </button>
+          </div>
+        </form>
+      )}
+
+      {/* Loading State */}
+      {isLoading && (
+        <div className="w-full py-8 flex items-center justify-center gap-2 text-xs text-emerald-400">
+          <div className="w-3.5 h-3.5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+          <span>Loading moments from server...</span>
         </div>
-      </div>
+      )}
 
       {/* Moments Feed Posts */}
-      <div className="space-y-3 px-3">
-        {/* Post 1 */}
-        <div className="bg-[#08231e]/90 border border-emerald-800/30 rounded-2xl p-3.5 shadow-md space-y-3">
-          {/* Post Header */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-cyan-800 to-indigo-950 flex items-center justify-center font-bold text-white ring-1 ring-teal-400">
-                🧔
+      {!isLoading && (
+        <div className="space-y-3 p-3">
+          {posts.map((post) => (
+            <div
+              key={post.id}
+              className="bg-[#08231e]/90 border border-emerald-800/30 rounded-2xl p-3.5 shadow-md space-y-3"
+            >
+              {/* Post Header */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-cyan-800 to-indigo-950 flex items-center justify-center font-bold text-white ring-1 ring-teal-400 overflow-hidden">
+                    {post.avatarImage ? (
+                      <img src={post.avatarImage} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <span>{post.avatarInitial}</span>
+                    )}
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[13px] font-black text-white">
+                      {post.authorName}
+                    </span>
+                    <span className="text-[10px] text-teal-400/80 font-semibold uppercase">
+                      {post.role}
+                    </span>
+                  </div>
+                </div>
+
+                {post.userId !== 9999 && (
+                  <button
+                    type="button"
+                    onClick={() => handleFollowUser(post.userId)}
+                    className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors cursor-pointer ${
+                      followedUsers[post.userId]
+                        ? 'bg-emerald-600 text-white'
+                        : 'bg-teal-500/20 text-teal-300 hover:bg-teal-500/30'
+                    }`}
+                    title="Follow User"
+                  >
+                    {followedUsers[post.userId] ? (
+                      <Check className="w-3.5 h-3.5" />
+                    ) : (
+                      <UserPlus className="w-4 h-4" />
+                    )}
+                  </button>
+                )}
               </div>
-              <div className="flex flex-col">
-                <span className="text-[13px] font-black text-white">
-                  الباش الخزرجي
-                </span>
-                <div className="flex items-center gap-1 mt-0.5">
-                  <span className="bg-blue-600/80 text-white text-[9px] font-extrabold px-1.5 py-0.2 rounded-full">
-                    💎 V6
-                  </span>
-                  <span className="bg-amber-600/80 text-amber-100 text-[9px] font-extrabold px-1.5 py-0.2 rounded-full">
-                    NT
-                  </span>
-                  <span className="bg-purple-600/80 text-white text-[9px] font-extrabold px-1.5 py-0.2 rounded-full">
-                    🔥 68
-                  </span>
+
+              {/* Post Body */}
+              <p className="text-xs text-slate-100 leading-relaxed font-medium">
+                {post.content}
+              </p>
+
+              {/* Post Footer Actions */}
+              <div className="flex items-center justify-between text-xs text-slate-400 pt-1 border-t border-emerald-950/60">
+                <span>{post.timeAgo}</span>
+                <div className="flex items-center gap-4">
+                  <button
+                    type="button"
+                    onClick={() => toggleLike(post.id)}
+                    className={`flex items-center gap-1 transition-colors cursor-pointer ${
+                      likedPosts[post.id] ? 'text-rose-400' : 'hover:text-white'
+                    }`}
+                  >
+                    <Heart className={`w-4 h-4 ${likedPosts[post.id] ? 'fill-current' : ''}`} />
+                    <span>{likedPosts[post.id] ? post.likes + 1 : post.likes}</span>
+                  </button>
+                  <button type="button" className="flex items-center gap-1 hover:text-white transition-colors cursor-pointer">
+                    <MessageCircle className="w-4 h-4" />
+                    <span>{post.comments}</span>
+                  </button>
                 </div>
               </div>
             </div>
-
-            <button
-              type="button"
-              className="w-7 h-7 rounded-full bg-teal-500/20 text-teal-300 hover:bg-teal-500/30 flex items-center justify-center transition-colors cursor-pointer"
-              title="Follow"
-            >
-              <UserPlus className="w-4 h-4" />
-            </button>
-          </div>
-
-          {/* Post Body Quote */}
-          <p className="text-xs text-slate-100 leading-relaxed font-medium text-right dir-rtl" dir="rtl">
-            أحقر الرجال من يجلس يتكلم عن عرض امراة كان يوماً يناديها حبيبتي
-          </p>
-
-          {/* Media Container Placeholder */}
-          <div className="w-full h-44 rounded-xl bg-gradient-to-b from-[#0b2b25] to-[#041914] border border-emerald-900/40 flex items-center justify-center text-slate-500 text-xs font-semibold">
-            <span>📷 Moment Visual Asset</span>
-          </div>
-
-          {/* Post Footer Actions */}
-          <div className="flex items-center justify-between text-xs text-slate-400 pt-1 border-t border-emerald-950/60">
-            <span>7 days ago</span>
-            <div className="flex items-center gap-4">
-              <button
-                type="button"
-                onClick={() => toggleLike('post-1')}
-                className={`flex items-center gap-1 transition-colors cursor-pointer ${
-                  likedPosts['post-1'] ? 'text-rose-400' : 'hover:text-white'
-                }`}
-              >
-                <Heart className={`w-4 h-4 ${likedPosts['post-1'] ? 'fill-current' : ''}`} />
-                <span>{likedPosts['post-1'] ? 862 : 861}</span>
-              </button>
-              <button type="button" className="flex items-center gap-1 hover:text-white transition-colors cursor-pointer">
-                <MessageCircle className="w-4 h-4" />
-                <span>262</span>
-              </button>
-            </div>
-          </div>
+          ))}
         </div>
-
-        {/* Post 2 (Meme Post) */}
-        <div className="bg-[#08231e]/90 border border-emerald-800/30 rounded-2xl p-3.5 shadow-md space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-purple-800 to-indigo-950 flex items-center justify-center font-bold text-white ring-1 ring-purple-400">
-                🖤
-              </div>
-              <div className="flex flex-col">
-                <span className="text-[13px] font-black text-white">
-                  c_il__adman_oal
-                </span>
-                <div className="flex items-center gap-1 mt-0.5">
-                  <span className="bg-blue-600/80 text-white text-[9px] font-extrabold px-1.5 py-0.2 rounded-full">
-                    💎 V6
-                  </span>
-                  <span className="bg-teal-600/80 text-white text-[9px] font-extrabold px-1.5 py-0.2 rounded-full">
-                    🔵 52
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              className="w-7 h-7 rounded-full bg-teal-500/20 text-teal-300 hover:bg-teal-500/30 flex items-center justify-center transition-colors cursor-pointer"
-              title="Follow"
-            >
-              <UserPlus className="w-4 h-4" />
-            </button>
-          </div>
-
-          <p className="text-xs text-slate-100 leading-relaxed font-medium text-right dir-rtl" dir="rtl">
-            الله يرحمك يا جدي 😭😭😭 #حقيقة البوح #OOTD
-          </p>
-
-          {/* Meme Card */}
-          <div className="w-full rounded-xl bg-black/70 border border-slate-800 p-4 text-center space-y-2">
-            <p className="text-sm font-black text-white leading-relaxed" dir="rtl">
-              جدي وهو بيموت قالي سبتلك ورث تاكل بيه طول عمرك فتحت الصندوق لقيت معلقه 🥺🥄
-            </p>
-          </div>
-
-          <div className="flex items-center justify-between text-xs text-slate-400 pt-1 border-t border-emerald-950/60">
-            <span>2 days ago</span>
-            <div className="flex items-center gap-4">
-              <button
-                type="button"
-                onClick={() => toggleLike('post-2')}
-                className={`flex items-center gap-1 transition-colors cursor-pointer ${
-                  likedPosts['post-2'] ? 'text-rose-400' : 'hover:text-white'
-                }`}
-              >
-                <Heart className={`w-4 h-4 ${likedPosts['post-2'] ? 'fill-current' : ''}`} />
-                <span>{likedPosts['post-2'] ? 450 : 449}</span>
-              </button>
-              <button type="button" className="flex items-center gap-1 hover:text-white transition-colors cursor-pointer">
-                <MessageCircle className="w-4 h-4" />
-                <span>88</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Floating Action Button (Compose Moment) */}
-      <button
-        type="button"
-        onClick={() => alert('Compose new Moment post')}
-        className="fixed bottom-20 right-6 z-40 w-12 h-12 rounded-full bg-gradient-to-tr from-teal-500 to-emerald-400 text-[#04241d] font-black flex items-center justify-center shadow-2xl hover:scale-110 active:scale-95 transition-transform cursor-pointer"
-        title="Compose Moment"
-      >
-        <Edit3 className="w-5 h-5 stroke-[2.5]" />
-      </button>
+      )}
     </div>
   )
 }

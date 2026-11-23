@@ -8,6 +8,7 @@ import {
 } from '../common/SvgIcons'
 
 interface TopTopHeaderProps {
+  user?: any
   coins?: number
   onWalletClick?: () => void
   onGiftClick?: () => void
@@ -17,6 +18,7 @@ interface TopTopHeaderProps {
 }
 
 export const TopTopHeader: React.FC<TopTopHeaderProps> = ({
+  user,
   coins = 0,
   onWalletClick,
   onGiftClick,
@@ -24,6 +26,9 @@ export const TopTopHeader: React.FC<TopTopHeaderProps> = ({
   onSearchClick,
   onProfileClick,
 }) => {
+  const displayName = user?.name || 'Player'
+  const avatarInitial = displayName.trim().charAt(0).toUpperCase() || 'U'
+
   return (
     <header className="relative w-full bg-[#041d18] overflow-hidden select-none">
       {/* Decorative Night Skyline & Lanterns SVG Vector Backdrop */}
@@ -36,16 +41,24 @@ export const TopTopHeader: React.FC<TopTopHeaderProps> = ({
         <div className="flex items-center justify-between">
           {/* Left: Avatar 'L', Coin Pill, and Gift Box */}
           <div className="flex items-center gap-2.5">
-            {/* 'L' Initial Profile Avatar */}
+            {/* Dynamic Profile Avatar Button */}
             <button
               type="button"
               onClick={onProfileClick}
-              className="relative w-9 h-9 rounded-full bg-gradient-to-tr from-emerald-600 to-teal-400 p-[1.5px] shadow-md cursor-pointer transition-transform active:scale-95 focus:outline-none"
-              title="Profile"
+              className="relative w-9 h-9 rounded-full bg-gradient-to-tr from-emerald-600 to-teal-400 p-[1.5px] shadow-md cursor-pointer transition-transform active:scale-95 focus:outline-none overflow-hidden"
+              title={`Profile (${displayName})`}
             >
-              <div className="w-full h-full rounded-full bg-[#07362d] flex items-center justify-center font-bold text-base text-white">
-                L
-              </div>
+              {user?.profile_image ? (
+                <img
+                  src={user.profile_image}
+                  alt={displayName}
+                  className="w-full h-full rounded-full object-cover"
+                />
+              ) : (
+                <div className="w-full h-full rounded-full bg-[#07362d] flex items-center justify-center font-bold text-base text-white">
+                  {avatarInitial}
+                </div>
+              )}
             </button>
 
             {/* Coin Balance Pill */}

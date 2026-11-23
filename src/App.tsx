@@ -113,6 +113,7 @@ export default function App() {
           {/* 1. TopTop Casual Games Home */}
           {currentTab === 'home' && (
             <HomePage
+              user={authUser}
               coins={coins}
               onJoinRoomSession={handleJoinRoomSession}
               onQuickMatchLaunch={handleQuickMatchLaunch}
@@ -144,7 +145,7 @@ export default function App() {
             />
           )}
 
-          {/* 5. Me / Profile (Laraib Husain) */}
+          {/* 6. Me / Profile */}
           {currentTab === 'account' && (
             <AccountPage
               user={authUser}
@@ -152,6 +153,7 @@ export default function App() {
               gems={gems}
               onTopUpCoins={handleTopUpCoins}
               onLogout={handleLogout}
+              onUpdateUser={(updated) => setAuthUser(updated)}
             />
           )}
         </AppLayout>

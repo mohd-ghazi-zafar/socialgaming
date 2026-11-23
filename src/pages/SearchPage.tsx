@@ -45,71 +45,16 @@ export const SearchPage: React.FC<SearchPageProps> = ({
 
   // Determine current user ID
   const authSession = getStoredAuth()
-  const displayId = myId || authSession?.unique_id || authSession?.user?.user_uid || '117215436'
+  const displayId = myId || authSession?.unique_id || authSession?.user?.user_uid || 'G-311060-2026'
 
-  // Directory users list (with initial fallback players)
-  const [users, setUsers] = useState<DirectoryUser[]>([
-    {
-      id: 'usr-1',
-      uniqueId: '117215436',
-      name: 'Laraib Husain',
-      avatarUrl: '',
-      bio: 'Ludo Grandmaster & Dubai tournament champion.',
-      level: 42,
-      vipTier: 'vip',
-      isFriend: true,
-      isOnline: true,
-      gamesPlayed: 1240,
-      winRate: 68,
-      favoriteGame: 'ludo',
-    },
-    {
-      id: 'usr-2',
-      uniqueId: '64694022',
-      name: 'MAL 🇫🇷 DOO.',
-      avatarUrl: '',
-      bio: 'US Legend • Top 10 Room Host',
-      level: 75,
-      vipTier: 'diamond',
-      isFriend: false,
-      isOnline: true,
-      gamesPlayed: 2410,
-      winRate: 74,
-      favoriteGame: 'jackaroo',
-    },
-    {
-      id: 'usr-3',
-      uniqueId: '83920199',
-      name: 'رنـــــ ran__oosh 🦋',
-      avatarUrl: '',
-      bio: 'Saudi Arab Club • Friendly matches only',
-      level: 64,
-      vipTier: 'gold',
-      isFriend: false,
-      isOnline: true,
-      gamesPlayed: 850,
-      winRate: 62,
-      favoriteGame: 'carrom',
-    },
-    {
-      id: 'usr-4',
-      uniqueId: '55209144',
-      name: 'فـهـد الـبـحـريـنـي',
-      avatarUrl: '',
-      bio: 'Bahrain Champion • Ludo & Domino',
-      level: 87,
-      vipTier: 'diamond',
-      isFriend: false,
-      isOnline: true,
-      gamesPlayed: 1820,
-      winRate: 79,
-      favoriteGame: 'ludo',
-    },
-  ])
+  // Real Directory users fetched strictly from backend database
+  const [users, setUsers] = useState<DirectoryUser[]>([])
+  const [, setIsLoading] = useState(false)
 
-  // Fetch real users from backend if token exists
+  // Fetch real users from backend database
   useEffect(() => {
     if (authSession?.token) {
+      setIsLoading(true)
       viewAllUsers(authSession.token)
         .then((res) => {
           if (res?.users && Array.isArray(res.users)) {
@@ -117,60 +62,53 @@ export const SearchPage: React.FC<SearchPageProps> = ({
               id: String(u.id),
               uniqueId: u.user_uid,
               name: u.name,
-              avatarUrl: u.profile_image || '',
-              bio: `${u.role === 'admin' ? 'Administrator' : 'UADA Player'} • Registered User`,
+              avatarUrl: u.profile_image ? (u.profile_image.startsWith('http://72-61-235-208.sslip.io') ? u.profile_image.replace('http://72-61-235-208.sslip.io', 'https://72-61-235-208.sslip.io') : u.profile_image) : '',
+              bio: `${u.role === 'admin' ? 'Administrator' : 'UADA Player'} • ${u.auth_provider || 'Registered'}`,
               level: u.age || 25,
               vipTier: 'vip',
               isFriend: false,
               isOnline: true,
-              gamesPlayed: 120,
-              winRate: 65,
+              gamesPlayed: 10,
+              winRate: 50,
               favoriteGame: 'ludo',
             }))
-
-            setUsers((prev) => {
-              const existingIds = new Set(mapped.map((m) => m.uniqueId))
-              return [...mapped, ...prev.filter((p) => !existingIds.has(p.uniqueId))]
-            })
+            setUsers(mapped)
           }
         })
-        .catch(() => {
-          // Graceful fallback to initial directory users
+        .catch((err) => {
+          console.debug('Failed to fetch users:', err.message)
+        })
+        .finally(() => {
+          setIsLoading(false)
         })
     }
   }, [authSession?.token])
 
-  // Mock public rooms for Room ID search
-  const mockRooms = [
-    { id: 'room-101', name: 'مثل العصر مره 🌷', host: 'Sara', game: 'Ludo', code: '10123' },
-    { id: 'room-102', name: 'كتيبة التعناع 🥰❤️', host: 'Amir', game: 'Carrom', code: '10245' },
-    { id: 'room-103', name: 'فخر العرب 🦅', host: 'Fahad', game: 'Jackaroo', code: '10389' },
-  ]
-
-  // Filter users based on query
+  // Filter real users based on query (by Name or User UID)
   const filteredUsers = useMemo(() => {
     const q = query.trim().toLowerCase()
     if (!q) return []
     return users.filter(
       (u) =>
         u.name.toLowerCase().includes(q) ||
-        u.uniqueId.toLowerCase().includes(q) ||
-        u.favoriteGame.toLowerCase().includes(q)
+        u.uniqueId.toLowerCase().includes(q)
     )
   }, [users, query])
 
-  // Filter rooms based on query
+  // Virtual room matching based on real user room IDs
   const filteredRooms = useMemo(() => {
     const q = query.trim().toLowerCase()
     if (!q) return []
-    return mockRooms.filter(
-      (r) =>
-        r.name.toLowerCase().includes(q) ||
-        r.code.toLowerCase().includes(q) ||
-        r.game.toLowerCase().includes(q) ||
-        r.host.toLowerCase().includes(q)
-    )
-  }, [query])
+    return users
+      .filter((u) => u.uniqueId.toLowerCase().includes(q) || u.name.toLowerCase().includes(q))
+      .map((u) => ({
+        id: `room-${u.uniqueId}`,
+        name: `${u.name}'s Game Room`,
+        host: u.name,
+        game: 'Ludo',
+        code: u.uniqueId,
+      }))
+  }, [users, query])
 
   const showToast = (msg: string) => {
     setToastMessage(msg)

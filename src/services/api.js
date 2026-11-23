@@ -14,6 +14,14 @@ export const FOLLOW_BASE_URL = `${API_BASE_ROOT}/api/follow`
 export const BLOCK_BASE_URL = `${API_BASE_ROOT}/api/blockroute`
 // export const BANNER_BASE_URL = `${API_BASE_ROOT}/api/banner`
 
+export function normalizeImageUrl(url) {
+  if (!url || typeof url !== 'string') return null
+  if (url.startsWith('http://72-61-235-208.sslip.io')) {
+    return url.replace('http://72-61-235-208.sslip.io', 'https://72-61-235-208.sslip.io')
+  }
+  return url
+}
+
 export const AUTH_STORAGE_KEY = 'uada_auth_session'
 
 export function getStoredAuth() {
