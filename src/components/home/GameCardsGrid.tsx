@@ -40,15 +40,15 @@ export const GameCardsGrid: React.FC<GameCardsGridProps> = ({ onSelectGame }) =>
   ]
 
   return (
-    <div className="w-full px-3.5 py-1 select-none">
-      {/* 2x2 Grid displaying the cutout game cards directly */}
-      <div className="grid grid-cols-2 gap-2.5 w-full">
+    <div className="w-full px-4 py-1 select-none flex justify-center">
+      {/* Responsive 2x2 Grid fluidly adapting to viewport width and height */}
+      <div className="grid grid-cols-2 gap-x-[clamp(10px,3.5vw,18px)] gap-y-[clamp(8px,1.4vh,12px)] w-full max-w-[340px] justify-items-center">
         {cards.map((card) => (
           <button
             key={card.id}
             type="button"
             onClick={() => onSelectGame(card.id)}
-            className="w-full cursor-pointer transition-transform duration-150 active:scale-95 hover:scale-[1.02] focus:outline-none flex items-center justify-center p-0 bg-transparent border-0 rounded-2xl overflow-hidden"
+            className="relative flex items-center justify-center aspect-[1097/1434] w-full max-w-[150px] max-h-[17.5vh] min-h-[108px] transition-transform duration-150 active:scale-95 hover:scale-[1.03] cursor-pointer focus:outline-none p-0 bg-transparent border-0"
             title={`Play ${card.name}`}
           >
             <img
@@ -61,7 +61,7 @@ export const GameCardsGrid: React.FC<GameCardsGridProps> = ({ onSelectGame }) =>
                   target.src = card.fallbackImage
                 }
               }}
-              className="w-full h-auto object-contain filter drop-shadow-[0_4px_12px_rgba(0,0,0,0.45)] block select-none pointer-events-none"
+              className="w-full h-full object-contain filter drop-shadow-[0_4px_12px_rgba(0,0,0,0.45)] select-none pointer-events-none"
             />
           </button>
         ))}

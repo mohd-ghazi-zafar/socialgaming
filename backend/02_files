@@ -1,0 +1,1332 @@
+    // module/chatModule.js
+const pool = require("../config/connection");
+
+// =====================================================
+// CREATE CHATS & CHAT MESSAGES TABLES
+// =====================================================
+(async () => {
+    try {
+        // 1. 1-on-1 Chat Room Table
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS chats (
+                id SERIAL PRIMARY KEY,
+                chat_uid VARCHAR(50) UNIQUE NOT NULL,        -- e.g., CHAT-482910-2026
+                user1_id INT NOT NULL,
+                user2_id INT NOT NULL,
+
+                last_message TEXT,
+                last_message_type VARCHAR(30) DEFAULT 'text',
+                last_message_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+                user1_unread INT DEFAULT 0,
+                user2_unread INT DEFAULT 0,
+
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+                FOREIGN KEY (user1_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (user2_id) REFERENCES users(id) ON DELETE CASCADE,
+
+                UNIQUE (user1_id, user2_id),
+                CHECK (user1_id < user2_id)                  -- Prevents self-chat & duplicate rooms
+            );
+        `);
+
+        // 2. Chat Messages Table (WhatsApp-style features)
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS chat_messages (
+                id SERIAL PRIMARY KEY,
+                chat_id INT NOT NULL,
+                sender_id INT NOT NULL,
+                receiver_id INT NOT NULL,
+
+                message_type VARCHAR(30) NOT NULL DEFAULT 'text'
+                    CHECK (message_type IN ('text', 'voice', 'image', 'video', 'file', 'sticker')),
+
+                content TEXT,                                -- Text + Emojis
+                media_url TEXT,                              -- Base URL for voice note / image / video / file
+                media_duration INT,                          -- Duration in seconds (for voice/video)
+                file_name VARCHAR(255),
+                file_size VARCHAR(50),
+
+                reply_to_message_id INT,                     -- Reply / Quote another message
+                reactions JSONB DEFAULT '{}'::jsonb,         -- { "userId": "❤️" }
+
+                status VARCHAR(20) DEFAULT 'sent'
+                    CHECK (status IN ('sent', 'delivered', 'read')),
+                read_at TIMESTAMP,
+
+                is_edited BOOLEAN DEFAULT FALSE,
+                is_pinned BOOLEAN DEFAULT FALSE,
+                is_deleted_for_everyone BOOLEAN DEFAULT FALSE,
+                deleted_for_users JSONB DEFAULT '[]'::jsonb, -- [userId1, userId2] for "Delete for me"
+                starred_by JSONB DEFAULT '[]'::jsonb,        -- [userId1] for starred messages
+
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+                FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE,
+                FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (receiver_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (reply_to_message_id) REFERENCES chat_messages(id) ON DELETE SET NULL
+            );
+        `);
+
+        // Indexes for fast history & inbox queries
+        await pool.query(`
+            CREATE INDEX IF NOT EXISTS idx_chat_messages_chat_id ON chat_messages(chat_id, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_chats_user1 ON chats(user1_id);
+            CREATE INDEX IF NOT EXISTS idx_chats_user2 ON chats(user2_id);
+        `);
+
+        console.log("Chats and chat_messages tables ready");
+    } catch (err) {
+        console.error("Error creating chat tables:", err.message);
+    }
+})();
+
+
+// =====================================================
+// 1. GET OR CREATE 1-ON-1 CHAT ROOM BETWEEN TWO PLAYERS
+// =====================================================
+const getOrCreateChat = async (playerAId, playerBId, chatUid) => {
+    try {
+        const u1 = Math.min(Number(playerAId), Number(playerBId));
+        const u2 = Math.max(Number(playerAId), Number(playerBId));
+
+        // Check if chat already exists
+        const existing = await pool.query(
+            `
+            SELECT * FROM chats
+            WHERE user1_id = $1 AND user2_id = $2
+            LIMIT 1
+            `,
+            [u1, u2]
+        );
+
+        if (existing.rows[0]) {
+            return existing.rows[0];
+        }
+
+        // Create new chat room
+        const created = await pool.query(
+            `
+            INSERT INTO chats (chat_uid, user1_id, user2_id)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (user1_id, user2_id) DO UPDATE SET updated_at = CURRENT_TIMESTAMP
+            RETURNING *
+            `,
+            [chatUid, u1, u2]
+        );
+
+        return created.rows[0];
+    } catch (err) {
+        throw err;
+    }
+};
+
+
+// =====================================================
+// 2. GET CHAT BY ID OR CHAT_UID
+// =====================================================
+const getChatById = async (identifier) => {
+    try {
+        const isNumeric = /^\d+$/.test(String(identifier));
+        const column = isNumeric ? "id" : "chat_uid";
+
+        const result = await pool.query(
+            `
+            SELECT * FROM chats
+            WHERE ${column} = $1
+            LIMIT 1
+            `,
+            [identifier]
+        );
+
+        return result.rows[0] || null;
+    } catch (err) {
+        throw err;
+    }
+};
+
+
+// =====================================================
+// 3. GET USER'S INBOX / ALL CONVERSATIONS
+// =====================================================
+const getUserChats = async (userId) => {
+    try {
+        const uid = Number(userId);
+        const result = await pool.query(
+            `
+            SELECT
+                c.id AS chat_id,
+                c.chat_uid,
+                c.last_message,
+                c.last_message_type,
+                c.last_message_at,
+                CASE
+                    WHEN c.user1_id = $1 THEN c.user1_unread
+                    ELSE c.user2_unread
+                END AS unread_count,
+                other_user.id AS player_id,
+                other_user.user_uid AS player_uid,
+                other_user.name AS player_name,
+                other_user.profile_image AS player_image
+            FROM chats c
+            JOIN users other_user
+                ON other_user.id = CASE WHEN c.user1_id = $1 THEN c.user2_id ELSE c.user1_id END
+            WHERE c.user1_id = $1 OR c.user2_id = $1
+            ORDER BY c.last_message_at DESC
+            `,
+            [uid]
+        );
+
+        return result.rows;
+    } catch (err) {
+        throw err;
+    }
+};
+
+
+// =====================================================
+// 4. SEND MESSAGE (TEXT, EMOJI, VOICE, IMAGE, VIDEO, FILE)
+// =====================================================
+const sendMessage = async (msgData) => {
+    try {
+        const {
+            chat_id,
+            sender_id,
+            receiver_id,
+            message_type = "text",
+            content = null,
+            media_url = null,
+            media_duration = null,
+            file_name = null,
+            file_size = null,
+            reply_to_message_id = null
+        } = msgData;
+
+        const insertResult = await pool.query(
+            `
+            INSERT INTO chat_messages (
+                chat_id,
+                sender_id,
+                receiver_id,
+                message_type,
+                content,
+                media_url,
+                media_duration,
+                file_name,
+                file_size,
+                reply_to_message_id
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            RETURNING *
+            `,
+            [
+                chat_id,
+                sender_id,
+                receiver_id,
+                message_type,
+                content,
+                media_url,
+                media_duration,
+                file_name,
+                file_size,
+                reply_to_message_id
+            ]
+        );
+
+        const message = insertResult.rows[0];
+
+        // Preview text for inbox list
+        const previewText =
+            message_type === "text"
+                ? content
+                : message_type === "voice"
+                ? "🎤 Voice message"
+                : message_type === "image"
+                ? "📷 Photo"
+                : message_type === "video"
+                ? "🎥 Video"
+                : message_type === "sticker"
+                ? "💟 Sticker"
+                : `📎 ${file_name || "File"}`;
+
+        // Update chat room last_message & increment receiver's unread count
+        await pool.query(
+            `
+            UPDATE chats
+            SET
+                last_message = $1,
+                last_message_type = $2,
+                last_message_at = CURRENT_TIMESTAMP,
+                user1_unread = CASE WHEN user1_id = $3 THEN user1_unread + 1 ELSE user1_unread END,
+                user2_unread = CASE WHEN user2_id = $3 THEN user2_unread + 1 ELSE user2_unread END,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = $4
+            `,
+            [previewText, message_type, receiver_id, chat_id]
+        );
+
+        return message;
+    } catch (err) {
+        throw err;
+    }
+};
+
+
+// =====================================================
+// 5. GET CHAT HISTORY BY CHAT_ID (PAGINATED + REPLY DETAILS)
+// =====================================================
+const getChatMessages = async (chatId, currentUserId, limit = 50, offset = 0) => {
+    try {
+        const result = await pool.query(
+            `
+            SELECT
+                m.*,
+                sender.name AS sender_name,
+                sender.user_uid AS sender_uid,
+                sender.profile_image AS sender_image,
+                reply.content AS reply_content,
+                reply.message_type AS reply_message_type,
+                reply.sender_id AS reply_sender_id
+            FROM chat_messages m
+            JOIN users sender ON sender.id = m.sender_id
+            LEFT JOIN chat_messages reply ON reply.id = m.reply_to_message_id
+            WHERE m.chat_id = $1
+              AND NOT (m.deleted_for_users @> to_jsonb($2::int))
+            ORDER BY m.created_at DESC
+            LIMIT $3 OFFSET $4
+            `,
+            [chatId, Number(currentUserId), limit, offset]
+        );
+
+        // Return in chronological order (oldest -> newest) for chat UI
+        return result.rows.reverse();
+    } catch (err) {
+        throw err;
+    }
+};
+
+
+// =====================================================
+// 6. MARK MESSAGES AS DELIVERED OR READ
+// =====================================================
+const markMessagesRead = async (chatId, readerId) => {
+    try {
+        const uid = Number(readerId);
+
+        const updated = await pool.query(
+            `
+            UPDATE chat_messages
+            SET
+                status = 'read',
+                read_at = CURRENT_TIMESTAMP,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE chat_id = $1
+              AND receiver_id = $2
+              AND status != 'read'
+            RETURNING id, sender_id
+            `,
+            [chatId, uid]
+        );
+
+        // Reset unread counter for reader in chats table
+        await pool.query(
+            `
+            UPDATE chats
+            SET
+                user1_unread = CASE WHEN user1_id = $1 THEN 0 ELSE user1_unread END,
+                user2_unread = CASE WHEN user2_id = $1 THEN 0 ELSE user2_unread END
+            WHERE id = $2
+            `,
+            [uid, chatId]
+        );
+
+        return updated.rows;
+    } catch (err) {
+        throw err;
+    }
+};
+
+
+// =====================================================
+// 7. REACT / UNREACT TO A MESSAGE WITH EMOJI
+// =====================================================
+const toggleMessageReaction = async (messageId, userId, emoji) => {
+    try {
+        const existing = await pool.query(
+            `SELECT reactions FROM chat_messages WHERE id = $1`,
+            [messageId]
+        );
+
+        if (!existing.rows[0]) return null;
+
+        const reactions = existing.rows[0].reactions || {};
+        const key = String(userId);
+
+        // If same emoji clicked again, remove reaction; otherwise set/update emoji
+        if (!emoji || reactions[key] === emoji) {
+            delete reactions[key];
+        } else {
+            reactions[key] = emoji;
+        }
+
+        const result = await pool.query(
+            `
+            UPDATE chat_messages
+            SET reactions = $1::jsonb, updated_at = CURRENT_TIMESTAMP
+            WHERE id = $2
+            RETURNING *
+            `,
+            [JSON.stringify(reactions), messageId]
+        );
+
+        return result.rows[0];
+    } catch (err) {
+        throw err;
+    }
+};
+
+
+// =====================================================
+// 8. EDIT TEXT MESSAGE (SENDER ONLY)
+// =====================================================
+const editMessage = async (messageId, senderId, newContent) => {
+    try {
+        const result = await pool.query(
+            `
+            UPDATE chat_messages
+            SET
+                content = $1,
+                is_edited = TRUE,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = $2
+              AND sender_id = $3
+              AND message_type = 'text'
+              AND is_deleted_for_everyone = FALSE
+            RETURNING *
+            `,
+            [newContent, messageId, senderId]
+        );
+
+        return result.rows[0] || null;
+    } catch (err) {
+        throw err;
+    }
+};
+
+
+// =====================================================
+// 9. DELETE MESSAGE ("FOR ME" OR "FOR EVERYONE")
+// =====================================================
+const deleteMessage = async (messageId, userId, deleteForEveryone = false) => {
+    try {
+        if (deleteForEveryone) {
+            const result = await pool.query(
+                `
+                UPDATE chat_messages
+                SET
+                    content = 'This message was deleted',
+                    media_url = NULL,
+                    is_deleted_for_everyone = TRUE,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = $1 AND sender_id = $2
+                RETURNING *
+                `,
+                [messageId, userId]
+            );
+            return result.rows[0] || null;
+        }
+
+        // Delete only for requesting user
+        const result = await pool.query(
+            `
+            UPDATE chat_messages
+            SET
+                deleted_for_users = CASE
+                    WHEN NOT (deleted_for_users @> to_jsonb($2::int))
+                    THEN deleted_for_users || to_jsonb($2::int)
+                    ELSE deleted_for_users
+                END,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = $1
+            RETURNING *
+            `,
+            [messageId, Number(userId)]
+        );
+
+        return result.rows[0] || null;
+    } catch (err) {
+        throw err;
+    }
+};
+
+
+// =====================================================
+// 10. TOGGLE PIN MESSAGE IN CHAT
+// =====================================================
+const togglePinMessage = async (messageId) => {
+    try {
+        const result = await pool.query(
+            `
+            UPDATE chat_messages
+            SET is_pinned = NOT is_pinned, updated_at = CURRENT_TIMESTAMP
+            WHERE id = $1
+            RETURNING *
+            `,
+            [messageId]
+        );
+
+        return result.rows[0] || null;
+    } catch (err) {
+        throw err;
+    }
+};
+
+
+// =====================================================
+// 11. SEARCH MESSAGES INSIDE A CHAT
+// =====================================================
+const searchChatMessages = async (chatId, currentUserId, searchTerm) => {
+    try {
+        const result = await pool.query(
+            `
+            SELECT *
+            FROM chat_messages
+            WHERE chat_id = $1
+              AND is_deleted_for_everyone = FALSE
+              AND NOT (deleted_for_users @> to_jsonb($2::int))
+              AND content ILIKE $3
+            ORDER BY created_at DESC
+            `,
+            [chatId, Number(currentUserId), `%${searchTerm}%`]
+        );
+
+        return result.rows;
+    } catch (err) {
+        throw err;
+    }
+};
+
+
+module.exports = {
+    getOrCreateChat,
+    getChatById,
+    getUserChats,
+    sendMessage,
+    getChatMessages,
+    markMessagesRead,
+    toggleMessageReaction,
+    editMessage,
+    deleteMessage,
+    togglePinMessage,
+    searchChatMessages
+};
+
+
+
+
+endpoint- api/follow
+routes:
+const express = require("express");
+const router = express.Router();
+
+const {
+    follow,
+    unfollow,
+    viewFollowers,
+    viewFollowing,
+    viewFollowStats,
+    checkFollowStatus,
+    viewFollowersCount,
+    viewFollowingCount
+} = require("../controller/UserProfile/followersController");
+
+// Note: Add your authentication middleware here
+// const { protect } = require("../middleware/auth");
+
+// =====================================================
+// FOLLOW ROUTES
+// =====================================================
+
+// Follow a user
+// POST /api/follow/:userId
+router.post("/:userId", follow);
+
+// Unfollow a user
+// DELETE /api/follow/:userId
+router.delete("/:userId", unfollow);
+
+// Get followers list of a user
+// GET /api/follow/followers/:userId
+router.get("/followers/:userId", viewFollowers);
+
+// Get following list of a user
+// GET /api/follow/following/:userId
+router.get("/following/:userId", viewFollowing);
+
+// Get both followers + following count
+// GET /api/follow/stats/:userId
+router.get("/stats/:userId", viewFollowStats);
+
+// Get only followers count
+// GET /api/follow/followers-count/:userId
+router.get("/followers-count/:userId", viewFollowersCount);
+
+// Get only following count
+// GET /api/follow/following-count/:userId
+router.get("/following-count/:userId", viewFollowingCount);
+
+// Check if current user is following someone
+// GET /api/follow/check/:userId
+router.get("/check/:userId", checkFollowStatus);
+
+
+module.exports = router;
+
+controller :
+const {
+    followUser,
+    unfollowUser,
+    isFollowing,
+    getFollowers,
+    getFollowing,
+    getFollowersCount,
+    getFollowingCount,
+    getFollowStats
+} = require("../../module/UserProfile/followersModule");
+
+
+// =====================================================
+// 1. FOLLOW A USER
+// POST /api/follow/:userId
+// =====================================================
+const follow = async (req, res) => {
+    try {
+        const followerId = req.user.id;
+        const followingId = req.params.userId;
+
+        if (followerId == followingId) {
+            return res.status(400).json({
+                message: "You cannot follow yourself"
+            });
+        }
+
+        const alreadyFollowing = await isFollowing(followerId, followingId);
+
+        if (alreadyFollowing) {
+            return res.status(400).json({
+                message: "You are already following this user"
+            });
+        }
+
+        const result = await followUser(followerId, followingId);
+
+        return res.status(201).json({
+            message: "User followed successfully",
+            data: result
+        });
+
+    } catch (err) {
+        console.error("follow error:", err.message);
+
+        if (err.code === "23505") {
+            return res.status(400).json({
+                message: "You are already following this user"
+            });
+        }
+
+        return res.status(500).json({
+            message: "Server error",
+            error: err.message
+        });
+    }
+};
+
+
+// =====================================================
+// 2. UNFOLLOW A USER
+// DELETE /api/follow/:userId
+// =====================================================
+const unfollow = async (req, res) => {
+    try {
+        const followerId = req.user.id;
+        const followingId = req.params.userId;
+
+        const result = await unfollowUser(followerId, followingId);
+
+        if (!result) {
+            return res.status(404).json({
+                message: "You are not following this user"
+            });
+        }
+
+        return res.status(200).json({
+            message: "User unfollowed successfully",
+            data: result
+        });
+
+    } catch (err) {
+        console.error("unfollow error:", err.message);
+        return res.status(500).json({
+            message: "Server error",
+            error: err.message
+        });
+    }
+};
+
+
+// =====================================================
+// 3. GET FOLLOWERS OF A USER
+// GET /api/follow/followers/:userId
+// =====================================================
+const viewFollowers = async (req, res) => {
+    try {
+        const userId = req.params.userId;
+
+        const followers = await getFollowers(userId);
+
+        return res.status(200).json({
+            message: "Followers fetched successfully",
+            count: followers.length,
+            followers
+        });
+
+    } catch (err) {
+        console.error("viewFollowers error:", err.message);
+        return res.status(500).json({
+            message: "Server error",
+            error: err.message
+        });
+    }
+};
+
+
+// =====================================================
+// 4. GET FOLLOWING LIST OF A USER
+// GET /api/follow/following/:userId
+// =====================================================
+const viewFollowing = async (req, res) => {
+    try {
+        const userId = req.params.userId;
+
+        const following = await getFollowing(userId);
+
+        return res.status(200).json({
+            message: "Following list fetched successfully",
+            count: following.length,
+            following
+        });
+
+    } catch (err) {
+        console.error("viewFollowing error:", err.message);
+        return res.status(500).json({
+            message: "Server error",
+            error: err.message
+        });
+    }
+};
+
+
+// =====================================================
+// 5. GET FOLLOW STATS (Followers + Following count)
+// GET /api/follow/stats/:userId
+// =====================================================
+const viewFollowStats = async (req, res) => {
+    try {
+        const userId = req.params.userId;
+
+        const stats = await getFollowStats(userId);
+
+        return res.status(200).json({
+            message: "Follow stats fetched successfully",
+            stats
+        });
+
+    } catch (err) {
+        console.error("viewFollowStats error:", err.message);
+        return res.status(500).json({
+            message: "Server error",
+            error: err.message
+        });
+    }
+};
+
+
+// =====================================================
+// 6. CHECK IF CURRENT USER IS FOLLOWING SOMEONE
+// GET /api/follow/check/:userId
+// =====================================================
+const checkFollowStatus = async (req, res) => {
+    try {
+        const followerId = req.user.id;
+        const followingId = req.params.userId;
+
+        const status = await isFollowing(followerId, followingId);
+
+        return res.status(200).json({
+            message: "Follow status fetched successfully",
+            isFollowing: status
+        });
+
+    } catch (err) {
+        console.error("checkFollowStatus error:", err.message);
+        return res.status(500).json({
+            message: "Server error",
+            error: err.message
+        });
+    }
+};
+
+
+// =====================================================
+// 7. GET FOLLOWERS COUNT ONLY
+// GET /api/follow/followers-count/:userId
+// =====================================================
+const viewFollowersCount = async (req, res) => {
+    try {
+        const userId = req.params.userId;
+
+        const count = await getFollowersCount(userId);
+
+        return res.status(200).json({
+            message: "Followers count fetched successfully",
+            followersCount: count
+        });
+
+    } catch (err) {
+        console.error("viewFollowersCount error:", err.message);
+        return res.status(500).json({
+            message: "Server error",
+            error: err.message
+        });
+    }
+};
+
+
+// =====================================================
+// 8. GET FOLLOWING COUNT ONLY
+// GET /api/follow/following-count/:userId
+// =====================================================
+const viewFollowingCount = async (req, res) => {
+    try {
+        const userId = req.params.userId;
+
+        const count = await getFollowingCount(userId);
+
+        return res.status(200).json({
+            message: "Following count fetched successfully",
+            followingCount: count
+        });
+
+    } catch (err) {
+        console.error("viewFollowingCount error:", err.message);
+        return res.status(500).json({
+            message: "Server error",
+            error: err.message
+        });
+    }
+};
+
+
+module.exports = {
+    follow,
+    unfollow,
+    viewFollowers,
+    viewFollowing,
+    viewFollowStats,
+    checkFollowStatus,
+    viewFollowersCount,
+    viewFollowingCount
+};
+
+
+
+controller :
+
+const {
+    sendFollowRequest,
+    acceptFollowRequest,
+    rejectFollowRequest,
+    unfollowUser,
+    getPendingRequests,
+    getRequestStatus,
+    isFollowing,
+    getFollowers,
+    getFollowing,
+    getFollowersCount,
+    getFollowingCount,
+    getFollowStats
+} = require("../../module/UserProfile/followersModule");
+
+
+// =====================================================
+// 1. SEND FOLLOW REQUEST
+// POST /api/follow/request/:userId
+// =====================================================
+const sendRequest = async (req, res) => {
+    try {
+        const senderId = req.user.id;
+        const receiverId = req.params.userId;
+
+        if (senderId == receiverId) {
+            return res.status(400).json({
+                message: "You cannot send follow request to yourself"
+            });
+        }
+
+        // Check if already following
+        const alreadyFollowing = await isFollowing(senderId, receiverId);
+        if (alreadyFollowing) {
+            return res.status(400).json({
+                message: "You are already following this user"
+            });
+        }
+
+        // Check if request already exists
+        const existingStatus = await getRequestStatus(senderId, receiverId);
+        if (existingStatus === "pending") {
+            return res.status(400).json({
+                message: "Follow request already sent"
+            });
+        }
+        if (existingStatus === "accepted") {
+            return res.status(400).json({
+                message: "You are already following this user"
+            });
+        }
+
+        const result = await sendFollowRequest(senderId, receiverId);
+
+        return res.status(201).json({
+            message: "Follow request sent successfully",
+            data: result
+        });
+
+    } catch (err) {
+        console.error("sendRequest error:", err.message);
+
+        if (err.code === "23505") {
+            return res.status(400).json({
+                message: "Follow request already sent"
+            });
+        }
+
+        return res.status(500).json({
+            message: "Server error",
+            error: err.message
+        });
+    }
+};
+
+
+// =====================================================
+// 2. ACCEPT FOLLOW REQUEST
+// PUT /api/follow/accept/:requestId
+// =====================================================
+const acceptRequest = async (req, res) => {
+    try {
+        const receiverId = req.user.id;
+        const requestId = req.params.requestId;
+
+        const result = await acceptFollowRequest(requestId, receiverId);
+
+        if (!result) {
+            return res.status(404).json({
+                message: "Follow request not found or already handled"
+            });
+        }
+
+        return res.status(200).json({
+            message: "Follow request accepted successfully",
+            data: result
+        });
+
+    } catch (err) {
+        console.error("acceptRequest error:", err.message);
+        return res.status(500).json({
+            message: "Server error",
+            error: err.message
+        });
+    }
+};
+
+
+// =====================================================
+// 3. REJECT FOLLOW REQUEST
+// PUT /api/follow/reject/:requestId
+// =====================================================
+const rejectRequest = async (req, res) => {
+    try {
+        const receiverId = req.user.id;
+        const requestId = req.params.requestId;
+
+        const result = await rejectFollowRequest(requestId, receiverId);
+
+        if (!result) {
+            return res.status(404).json({
+                message: "Follow request not found or already handled"
+            });
+        }
+
+        return res.status(200).json({
+            message: "Follow request rejected successfully",
+            data: result
+        });
+
+    } catch (err) {
+        console.error("rejectRequest error:", err.message);
+        return res.status(500).json({
+            message: "Server error",
+            error: err.message
+        });
+    }
+};
+
+
+// =====================================================
+// 4. UNFOLLOW USER
+// DELETE /api/follow/:userId
+// =====================================================
+const unfollow = async (req, res) => {
+    try {
+        const followerId = req.user.id;
+        const followingId = req.params.userId;
+
+        const result = await unfollowUser(followerId, followingId);
+
+        if (!result) {
+            return res.status(404).json({
+                message: "You are not following this user"
+            });
+        }
+
+        return res.status(200).json({
+            message: "Unfollowed successfully",
+            data: result
+        });
+
+    } catch (err) {
+        console.error("unfollow error:", err.message);
+        return res.status(500).json({
+            message: "Server error",
+            error: err.message
+        });
+    }
+};
+
+
+// =====================================================
+// 5. GET PENDING FOLLOW REQUESTS
+// GET /api/follow/requests
+// =====================================================
+const viewPendingRequests = async (req, res) => {
+    try {
+        const userId = req.user.id;
+
+        const requests = await getPendingRequests(userId);
+
+        return res.status(200).json({
+            message: "Pending follow requests fetched successfully",
+            count: requests.length,
+            requests
+        });
+
+    } catch (err) {
+        console.error("viewPendingRequests error:", err.message);
+        return res.status(500).json({
+            message: "Server error",
+            error: err.message
+        });
+    }
+};
+
+
+// =====================================================
+// 6. GET FOLLOWERS LIST
+// GET /api/follow/followers/:userId
+// =====================================================
+const viewFollowers = async (req, res) => {
+    try {
+        const userId = req.params.userId;
+
+        const followers = await getFollowers(userId);
+
+        return res.status(200).json({
+            message: "Followers fetched successfully",
+            count: followers.length,
+            followers
+        });
+
+    } catch (err) {
+        console.error("viewFollowers error:", err.message);
+        return res.status(500).json({
+            message: "Server error",
+            error: err.message
+        });
+    }
+};
+
+
+// =====================================================
+// 7. GET FOLLOWING LIST
+// GET /api/follow/following/:userId
+// =====================================================
+const viewFollowing = async (req, res) => {
+    try {
+        const userId = req.params.userId;
+
+        const following = await getFollowing(userId);
+
+        return res.status(200).json({
+            message: "Following list fetched successfully",
+            count: following.length,
+            following
+        });
+
+    } catch (err) {
+        console.error("viewFollowing error:", err.message);
+        return res.status(500).json({
+            message: "Server error",
+            error: err.message
+        });
+    }
+};
+
+
+// =====================================================
+// 8. GET FOLLOW STATS
+// GET /api/follow/stats/:userId
+// =====================================================
+const viewFollowStats = async (req, res) => {
+    try {
+        const userId = req.params.userId;
+
+        const stats = await getFollowStats(userId);
+
+        return res.status(200).json({
+            message: "Follow stats fetched successfully",
+            stats
+        });
+
+    } catch (err) {
+        console.error("viewFollowStats error:", err.message);
+        return res.status(500).json({
+            message: "Server error",
+            error: err.message
+        });
+    }
+};
+
+
+// =====================================================
+// 9. GET FOLLOWERS COUNT
+// GET /api/follow/followers-count/:userId
+// =====================================================
+const viewFollowersCount = async (req, res) => {
+    try {
+        const userId = req.params.userId;
+
+        const count = await getFollowersCount(userId);
+
+        return res.status(200).json({
+            message: "Followers count fetched successfully",
+            followersCount: count
+        });
+
+    } catch (err) {
+        console.error("viewFollowersCount error:", err.message);
+        return res.status(500).json({
+            message: "Server error",
+            error: err.message
+        });
+    }
+};
+
+
+// =====================================================
+// 10. GET FOLLOWING COUNT
+// GET /api/follow/following-count/:userId
+// =====================================================
+const viewFollowingCount = async (req, res) => {
+    try {
+        const userId = req.params.userId;
+
+        const count = await getFollowingCount(userId);
+
+        return res.status(200).json({
+            message: "Following count fetched successfully",
+            followingCount: count
+        });
+
+    } catch (err) {
+        console.error("viewFollowingCount error:", err.message);
+        return res.status(500).json({
+            message: "Server error",
+            error: err.message
+        });
+    }
+};
+
+
+// =====================================================
+// 11. CHECK FOLLOW / REQUEST STATUS
+// GET /api/follow/status/:userId
+// =====================================================
+const checkStatus = async (req, res) => {
+    try {
+        const currentUserId = req.user.id;
+        const targetUserId = req.params.userId;
+
+        const following = await isFollowing(currentUserId, targetUserId);
+        const requestStatus = await getRequestStatus(currentUserId, targetUserId);
+
+        return res.status(200).json({
+            message: "Status fetched successfully",
+            isFollowing: following,
+            requestStatus: requestStatus   // pending / accepted / rejected / null
+        });
+
+    } catch (err) {
+        console.error("checkStatus error:", err.message);
+        return res.status(500).json({
+            message: "Server error",
+            error: err.message
+        });
+    }
+};
+
+
+module.exports = {
+    sendRequest,
+    acceptRequest,
+    rejectRequest,
+    unfollow,
+    viewPendingRequests,
+    viewFollowers,
+    viewFollowing,
+    viewFollowStats,
+    viewFollowersCount,
+    viewFollowingCount,
+    checkStatus
+};
+
+
+routes :
+
+
+
+const express = require("express");
+const router = express.Router();
+
+const {
+    sendRequest,
+    acceptRequest,
+    rejectRequest,
+    unfollow,
+    viewPendingRequests,
+    viewFollowers,
+    viewFollowing,
+    viewFollowStats,
+    viewFollowersCount,
+    viewFollowingCount,
+    checkStatus
+} = require("../controller/UserProfile/followersController");
+
+// Note: Add your authentication middleware here
+// const { protect } = require("../middleware/auth");
+
+// =====================================================
+// FOLLOW REQUEST ROUTES
+// =====================================================
+
+// Send follow request
+// POST /api/follow/request/:userId
+router.post("/request/:userId", sendRequest);
+
+// Accept follow request
+// PUT /api/follow/accept/:requestId
+router.put("/accept/:requestId", acceptRequest);
+
+// Reject follow request
+// PUT /api/follow/reject/:requestId
+router.put("/reject/:requestId", rejectRequest);
+
+// Unfollow user
+// DELETE /api/follow/:userId
+router.delete("/:userId", unfollow);
+
+// Get pending follow requests (received by logged-in user)
+// GET /api/follow/requests
+router.get("/requests", viewPendingRequests);
+
+// Get followers list
+// GET /api/follow/followers/:userId
+router.get("/followers/:userId", viewFollowers);
+
+// Get following list
+// GET /api/follow/following/:userId
+router.get("/following/:userId", viewFollowing);
+
+// Get follow stats (followers + following count)
+// GET /api/follow/stats/:userId
+router.get("/stats/:userId", viewFollowStats);
+
+// Get only followers count
+// GET /api/follow/followers-count/:userId
+router.get("/followers-count/:userId", viewFollowersCount);
+
+// Get only following count
+// GET /api/follow/following-count/:userId
+router.get("/following-count/:userId", viewFollowingCount);
+
+// Check follow / request status
+// GET /api/follow/status/:userId
+router.get("/status/:userId", checkStatus);
+
+
+module.exports = router;
+
+
+
+endpoint : /api/signuproute
+
+router.get("/all_user",verifyToken, viewAllUsers)
+
+controller :
+
+const viewAllUsers = async (req, res) => {
+    try {
+        const users = await getAllUsers();
+        return res.status(200).json({
+            message: "Users fetched successfully",
+            users
+        });
+    } catch (err) {
+        console.error("viewAllUsers error:", err.message);
+        return res.status(500).json({
+            message: "Server error",
+            error: err.message
+        });
+    }
+};
+
+module :
+
+const getAllUsers = async () => {
+    try {
+        const result = await pool.query(
+            `
+            SELECT id, user_uid, role, auth_provider, phone_number, email, name, gender, age, profile_image, is_verified, created_at
+            FROM users
+            ORDER BY created_at DESC
+            `
+        );
+
+        return result.rows;
+    } catch (err) {
+        throw err;
+    }
+};
