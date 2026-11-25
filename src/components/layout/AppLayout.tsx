@@ -21,11 +21,12 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   children,
 }) => {
   const isSearch = currentTab === 'search'
+  const isWhiteBg = currentTab === 'search' || currentTab === 'messages'
 
   return (
     <div
       className={`relative min-h-screen ${
-        isSearch ? 'bg-white text-slate-800' : 'bg-[#031914] text-white'
+        isWhiteBg ? 'bg-white text-slate-900' : 'bg-[#031914] text-white'
       } flex flex-col antialiased select-none font-sans overflow-x-hidden`}
     >
       {/* Main Viewport Content */}

@@ -1,0 +1,519 @@
+{
+  "clientName": "Thunder Client",
+  "collectionName": "ClickNova Play (UADA) API",
+  "collectionId": "uada-api-collection",
+  "dateExported": "2026-11-25",
+  "version": "1.1",
+  "folders": [
+    {
+      "_id": "folder-auth",
+      "name": "1. Auth & Users (/api/signuproute)",
+      "containerId": "",
+      "created": "2026-11-25",
+      "sortNum": 10000
+    },
+    {
+      "_id": "folder-follow",
+      "name": "2. Friends & Follow (/api/follow)",
+      "containerId": "",
+      "created": "2026-11-25",
+      "sortNum": 20000
+    },
+    {
+      "_id": "folder-chat",
+      "name": "3. Private Chat (/api/chatroute)",
+      "containerId": "",
+      "created": "2026-11-25",
+      "sortNum": 30000
+    },
+    {
+      "_id": "folder-moments",
+      "name": "4. Moments (/api/momentroute)",
+      "containerId": "",
+      "created": "2026-11-25",
+      "sortNum": 40000
+    },
+    {
+      "_id": "folder-blocks",
+      "name": "5. Block System (/api/blockroute)",
+      "containerId": "",
+      "created": "2026-11-25",
+      "sortNum": 50000
+    },
+    {
+      "_id": "folder-reports",
+      "name": "6. Reports (/api/report)",
+      "containerId": "",
+      "created": "2026-11-25",
+      "sortNum": 60000
+    },
+    {
+      "_id": "folder-banner",
+      "name": "7. Banner (/api/banner)",
+      "containerId": "",
+      "created": "2026-11-25",
+      "sortNum": 70000
+    }
+  ],
+  "requests": [
+    {
+      "_id": "req-send-otp",
+      "colId": "uada-api-collection",
+      "containerId": "folder-auth",
+      "name": "Send Phone OTP",
+      "url": "https://72-61-235-208.sslip.io/api/signuproute/auth/phone/send-otp",
+      "method": "POST",
+      "sortNum": 10100,
+      "headers": [{ "name": "Content-Type", "value": "application/json" }],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"phone_number\": \"+966500000001\"\n}"
+      }
+    },
+    {
+      "_id": "req-phone-signup",
+      "colId": "uada-api-collection",
+      "containerId": "folder-auth",
+      "name": "Complete Phone Signup (Form-Data)",
+      "url": "https://72-61-235-208.sslip.io/api/signuproute/auth/phone/signup",
+      "method": "POST",
+      "sortNum": 10200,
+      "body": {
+        "type": "formdata",
+        "formdata": [
+          { "name": "phone_number", "value": "+966500000001" },
+          { "name": "otp", "value": "123456" },
+          { "name": "password", "value": "SecretPass123!" },
+          { "name": "name", "value": "Fahad Al-Harbi" },
+          { "name": "gender", "value": "male" },
+          { "name": "age", "value": "24" },
+          { "name": "role", "value": "user" }
+        ]
+      }
+    },
+    {
+      "_id": "req-login",
+      "colId": "uada-api-collection",
+      "containerId": "folder-auth",
+      "name": "Login with Unique ID & Password",
+      "url": "https://72-61-235-208.sslip.io/api/signuproute/auth/login",
+      "method": "POST",
+      "sortNum": 10300,
+      "headers": [{ "name": "Content-Type", "value": "application/json" }],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"unique_id\": \"G-532240-2026\",\n  \"password\": \"SecretPass123!\"\n}"
+      }
+    },
+    {
+      "_id": "req-social-auth",
+      "colId": "uada-api-collection",
+      "containerId": "folder-auth",
+      "name": "Social Auth (Google / Apple / Snapchat)",
+      "url": "https://72-61-235-208.sslip.io/api/signuproute/auth/social",
+      "method": "POST",
+      "sortNum": 10400,
+      "headers": [{ "name": "Content-Type", "value": "application/json" }],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"provider\": \"google\",\n  \"provider_id\": \"google-uid-998877\",\n  \"email\": \"gamer@gmail.com\",\n  \"name\": \"Laraib Husain\",\n  \"profile_image\": \"https://images.unsplash.com/photo-1535713875002-d1d0cf377fde\",\n  \"gender\": \"male\",\n  \"age\": 24\n}"
+      }
+    },
+    {
+      "_id": "req-my-profile",
+      "colId": "uada-api-collection",
+      "containerId": "folder-auth",
+      "name": "Get My Profile",
+      "url": "https://72-61-235-208.sslip.io/api/signuproute/auth/users/me",
+      "method": "GET",
+      "sortNum": 10500,
+      "headers": [{ "name": "Authorization", "value": "Bearer {{TOKEN}}" }]
+    },
+    {
+      "_id": "req-all-users",
+      "colId": "uada-api-collection",
+      "containerId": "folder-auth",
+      "name": "View All Registered Users",
+      "url": "https://72-61-235-208.sslip.io/api/signuproute/all_user",
+      "method": "GET",
+      "sortNum": 10600,
+      "headers": [{ "name": "Authorization", "value": "Bearer {{TOKEN}}" }]
+    },
+    {
+      "_id": "req-update-profile",
+      "colId": "uada-api-collection",
+      "containerId": "folder-auth",
+      "name": "Update User Profile",
+      "url": "https://72-61-235-208.sslip.io/api/signuproute/auth/users/update/1",
+      "method": "PUT",
+      "sortNum": 10700,
+      "headers": [
+        { "name": "Authorization", "value": "Bearer {{TOKEN}}" },
+        { "name": "Content-Type", "value": "application/json" }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"name\": \"DARK Lost 👑\",\n  \"gender\": \"male\",\n  \"age\": 25\n}"
+      }
+    },
+    {
+      "_id": "req-send-follow",
+      "colId": "uada-api-collection",
+      "containerId": "folder-follow",
+      "name": "Send Follow Request",
+      "url": "https://72-61-235-208.sslip.io/api/follow/request/2",
+      "method": "POST",
+      "sortNum": 20100,
+      "headers": [{ "name": "Authorization", "value": "Bearer {{TOKEN}}" }]
+    },
+    {
+      "_id": "req-pending-requests",
+      "colId": "uada-api-collection",
+      "containerId": "folder-follow",
+      "name": "View Pending Received Requests",
+      "url": "https://72-61-235-208.sslip.io/api/follow/requests",
+      "method": "GET",
+      "sortNum": 20200,
+      "headers": [{ "name": "Authorization", "value": "Bearer {{TOKEN}}" }]
+    },
+    {
+      "_id": "req-accept-request",
+      "colId": "uada-api-collection",
+      "containerId": "folder-follow",
+      "name": "Accept Follow Request",
+      "url": "https://72-61-235-208.sslip.io/api/follow/accept/1",
+      "method": "PUT",
+      "sortNum": 20300,
+      "headers": [{ "name": "Authorization", "value": "Bearer {{TOKEN}}" }]
+    },
+    {
+      "_id": "req-reject-request",
+      "colId": "uada-api-collection",
+      "containerId": "folder-follow",
+      "name": "Reject Follow Request",
+      "url": "https://72-61-235-208.sslip.io/api/follow/reject/1",
+      "method": "PUT",
+      "sortNum": 20400,
+      "headers": [{ "name": "Authorization", "value": "Bearer {{TOKEN}}" }]
+    },
+    {
+      "_id": "req-unfollow",
+      "colId": "uada-api-collection",
+      "containerId": "folder-follow",
+      "name": "Unfollow User",
+      "url": "https://72-61-235-208.sslip.io/api/follow/2",
+      "method": "DELETE",
+      "sortNum": 20500,
+      "headers": [{ "name": "Authorization", "value": "Bearer {{TOKEN}}" }]
+    },
+    {
+      "_id": "req-followers-list",
+      "colId": "uada-api-collection",
+      "containerId": "folder-follow",
+      "name": "Get Followers List",
+      "url": "https://72-61-235-208.sslip.io/api/follow/followers/1",
+      "method": "GET",
+      "sortNum": 20600,
+      "headers": [{ "name": "Authorization", "value": "Bearer {{TOKEN}}" }]
+    },
+    {
+      "_id": "req-following-list",
+      "colId": "uada-api-collection",
+      "containerId": "folder-follow",
+      "name": "Get Following List",
+      "url": "https://72-61-235-208.sslip.io/api/follow/following/1",
+      "method": "GET",
+      "sortNum": 20700,
+      "headers": [{ "name": "Authorization", "value": "Bearer {{TOKEN}}" }]
+    },
+    {
+      "_id": "req-follow-stats",
+      "colId": "uada-api-collection",
+      "containerId": "folder-follow",
+      "name": "Get Follow Stats",
+      "url": "https://72-61-235-208.sslip.io/api/follow/stats/1",
+      "method": "GET",
+      "sortNum": 20800,
+      "headers": [{ "name": "Authorization", "value": "Bearer {{TOKEN}}" }]
+    },
+    {
+      "_id": "req-follow-status",
+      "colId": "uada-api-collection",
+      "containerId": "folder-follow",
+      "name": "Check Follow Status with Target User",
+      "url": "https://72-61-235-208.sslip.io/api/follow/status/2",
+      "method": "GET",
+      "sortNum": 20900,
+      "headers": [{ "name": "Authorization", "value": "Bearer {{TOKEN}}" }]
+    },
+    {
+      "_id": "req-view-inbox",
+      "colId": "uada-api-collection",
+      "containerId": "folder-chat",
+      "name": "View Inbox (All Conversations)",
+      "url": "https://72-61-235-208.sslip.io/api/chatroute/inbox",
+      "method": "GET",
+      "sortNum": 30100,
+      "headers": [{ "name": "Authorization", "value": "Bearer {{TOKEN}}" }]
+    },
+    {
+      "_id": "req-start-chat",
+      "colId": "uada-api-collection",
+      "containerId": "folder-chat",
+      "name": "Start or Get 1-on-1 Chat Room",
+      "url": "https://72-61-235-208.sslip.io/api/chatroute/start/2",
+      "method": "POST",
+      "sortNum": 30200,
+      "headers": [{ "name": "Authorization", "value": "Bearer {{TOKEN}}" }]
+    },
+    {
+      "_id": "req-send-msg",
+      "colId": "uada-api-collection",
+      "containerId": "folder-chat",
+      "name": "Send Message (Text)",
+      "url": "https://72-61-235-208.sslip.io/api/chatroute/1/send",
+      "method": "POST",
+      "sortNum": 30300,
+      "headers": [
+        { "name": "Authorization", "value": "Bearer {{TOKEN}}" },
+        { "name": "Content-Type", "value": "application/json" }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"message_type\": \"text\",\n  \"content\": \"Hey! Are you ready for a game of Ludo?\"\n}"
+      }
+    },
+    {
+      "_id": "req-send-voice-msg",
+      "colId": "uada-api-collection",
+      "containerId": "folder-chat",
+      "name": "Send Message (Voice Note Simulation)",
+      "url": "https://72-61-235-208.sslip.io/api/chatroute/1/send",
+      "method": "POST",
+      "sortNum": 30400,
+      "headers": [
+        { "name": "Authorization", "value": "Bearer {{TOKEN}}" },
+        { "name": "Content-Type", "value": "application/json" }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"message_type\": \"voice\",\n  \"content\": \"🎤 Voice message\",\n  \"media_duration\": 5\n}"
+      }
+    },
+    {
+      "_id": "req-view-messages",
+      "colId": "uada-api-collection",
+      "containerId": "folder-chat",
+      "name": "Get Chat History",
+      "url": "https://72-61-235-208.sslip.io/api/chatroute/1/messages?limit=50&offset=0",
+      "method": "GET",
+      "sortNum": 30500,
+      "headers": [{ "name": "Authorization", "value": "Bearer {{TOKEN}}" }]
+    },
+    {
+      "_id": "req-mark-read",
+      "colId": "uada-api-collection",
+      "containerId": "folder-chat",
+      "name": "Mark Chat Messages as Read",
+      "url": "https://72-61-235-208.sslip.io/api/chatroute/1/read",
+      "method": "PUT",
+      "sortNum": 30600,
+      "headers": [{ "name": "Authorization", "value": "Bearer {{TOKEN}}" }]
+    },
+    {
+      "_id": "req-react-msg",
+      "colId": "uada-api-collection",
+      "containerId": "folder-chat",
+      "name": "React / Unreact to Message",
+      "url": "https://72-61-235-208.sslip.io/api/chatroute/message/1/react",
+      "method": "PUT",
+      "sortNum": 30700,
+      "headers": [
+        { "name": "Authorization", "value": "Bearer {{TOKEN}}" },
+        { "name": "Content-Type", "value": "application/json" }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"emoji\": \"❤️\"\n}"
+      }
+    },
+    {
+      "_id": "req-edit-msg",
+      "colId": "uada-api-collection",
+      "containerId": "folder-chat",
+      "name": "Edit Message",
+      "url": "https://72-61-235-208.sslip.io/api/chatroute/message/1/edit",
+      "method": "PUT",
+      "sortNum": 30800,
+      "headers": [
+        { "name": "Authorization", "value": "Bearer {{TOKEN}}" },
+        { "name": "Content-Type", "value": "application/json" }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"content\": \"Updated message text\"\n}"
+      }
+    },
+    {
+      "_id": "req-del-msg",
+      "colId": "uada-api-collection",
+      "containerId": "folder-chat",
+      "name": "Delete Message",
+      "url": "https://72-61-235-208.sslip.io/api/chatroute/message/1?forEveryone=true",
+      "method": "DELETE",
+      "sortNum": 30900,
+      "headers": [{ "name": "Authorization", "value": "Bearer {{TOKEN}}" }]
+    },
+    {
+      "_id": "req-search-msg",
+      "colId": "uada-api-collection",
+      "containerId": "folder-chat",
+      "name": "Search Messages in Chat",
+      "url": "https://72-61-235-208.sslip.io/api/chatroute/1/search?q=Ludo",
+      "method": "GET",
+      "sortNum": 31000,
+      "headers": [{ "name": "Authorization", "value": "Bearer {{TOKEN}}" }]
+    },
+    {
+      "_id": "req-all-moments",
+      "colId": "uada-api-collection",
+      "containerId": "folder-moments",
+      "name": "Get All Moments Feed",
+      "url": "https://72-61-235-208.sslip.io/api/momentroute/moments?limit=20&offset=0",
+      "method": "GET",
+      "sortNum": 40100,
+      "headers": [{ "name": "Authorization", "value": "Bearer {{TOKEN}}" }]
+    },
+    {
+      "_id": "req-post-moment",
+      "colId": "uada-api-collection",
+      "containerId": "folder-moments",
+      "name": "Post a New Moment (Form-Data)",
+      "url": "https://72-61-235-208.sslip.io/api/momentroute/moments",
+      "method": "POST",
+      "sortNum": 40200,
+      "headers": [{ "name": "Authorization", "value": "Bearer {{TOKEN}}" }],
+      "body": {
+        "type": "formdata",
+        "formdata": [
+          { "name": "caption", "value": "Just won 1st rank in Ludo Tournament! 🏆" },
+          { "name": "image", "value": "", "type": "file" }
+        ]
+      }
+    },
+    {
+      "_id": "req-user-moments",
+      "colId": "uada-api-collection",
+      "containerId": "folder-moments",
+      "name": "Get Moments of Specific User",
+      "url": "https://72-61-235-208.sslip.io/api/momentroute/moments/user/1",
+      "method": "GET",
+      "sortNum": 40300,
+      "headers": [{ "name": "Authorization", "value": "Bearer {{TOKEN}}" }]
+    },
+    {
+      "_id": "req-react-moment",
+      "colId": "uada-api-collection",
+      "containerId": "folder-moments",
+      "name": "React to Moment (like, love, haha, wow, fire, sad)",
+      "url": "https://72-61-235-208.sslip.io/api/momentroute/moments/1/react",
+      "method": "POST",
+      "sortNum": 40400,
+      "headers": [
+        { "name": "Authorization", "value": "Bearer {{TOKEN}}" },
+        { "name": "Content-Type", "value": "application/json" }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"reaction_type\": \"fire\"\n}"
+      }
+    },
+    {
+      "_id": "req-del-moment",
+      "colId": "uada-api-collection",
+      "containerId": "folder-moments",
+      "name": "Delete Moment",
+      "url": "https://72-61-235-208.sslip.io/api/momentroute/moments/1",
+      "method": "DELETE",
+      "sortNum": 40500,
+      "headers": [{ "name": "Authorization", "value": "Bearer {{TOKEN}}" }]
+    },
+    {
+      "_id": "req-block-user",
+      "colId": "uada-api-collection",
+      "containerId": "folder-blocks",
+      "name": "Block User",
+      "url": "https://72-61-235-208.sslip.io/api/blockroute/2",
+      "method": "POST",
+      "sortNum": 50100,
+      "headers": [{ "name": "Authorization", "value": "Bearer {{TOKEN}}" }]
+    },
+    {
+      "_id": "req-unblock-user",
+      "colId": "uada-api-collection",
+      "containerId": "folder-blocks",
+      "name": "Unblock User",
+      "url": "https://72-61-235-208.sslip.io/api/blockroute/2",
+      "method": "DELETE",
+      "sortNum": 50200,
+      "headers": [{ "name": "Authorization", "value": "Bearer {{TOKEN}}" }]
+    },
+    {
+      "_id": "req-blocked-list",
+      "colId": "uada-api-collection",
+      "containerId": "folder-blocks",
+      "name": "View Blocked Users List",
+      "url": "https://72-61-235-208.sslip.io/api/blockroute/list",
+      "method": "GET",
+      "sortNum": 50300,
+      "headers": [{ "name": "Authorization", "value": "Bearer {{TOKEN}}" }]
+    },
+    {
+      "_id": "req-blocked-count",
+      "colId": "uada-api-collection",
+      "containerId": "folder-blocks",
+      "name": "View Blocked Count",
+      "url": "https://72-61-235-208.sslip.io/api/blockroute/count",
+      "method": "GET",
+      "sortNum": 50400,
+      "headers": [{ "name": "Authorization", "value": "Bearer {{TOKEN}}" }]
+    },
+    {
+      "_id": "req-submit-report",
+      "colId": "uada-api-collection",
+      "containerId": "folder-reports",
+      "name": "Submit Report Against User",
+      "url": "https://72-61-235-208.sslip.io/api/report/report/2",
+      "method": "POST",
+      "sortNum": 60100,
+      "headers": [
+        { "name": "Authorization", "value": "Bearer {{TOKEN}}" },
+        { "name": "Content-Type", "value": "application/json" }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"reason\": \"Inappropriate Language\",\n  \"description\": \"Player was abusive during the tournament.\"\n}"
+      }
+    },
+    {
+      "_id": "req-my-reports",
+      "colId": "uada-api-collection",
+      "containerId": "folder-reports",
+      "name": "View My Submitted Reports",
+      "url": "https://72-61-235-208.sslip.io/api/report/report/my-reports",
+      "method": "GET",
+      "sortNum": 60200,
+      "headers": [{ "name": "Authorization", "value": "Bearer {{TOKEN}}" }]
+    },
+    {
+      "_id": "req-get-banners",
+      "colId": "uada-api-collection",
+      "containerId": "folder-banner",
+      "name": "Get Promotional Banners",
+      "url": "https://72-61-235-208.sslip.io/api/banner",
+      "method": "GET",
+      "sortNum": 70100,
+      "headers": [{ "name": "Authorization", "value": "Bearer {{TOKEN}}" }]
+    }
+  ]
+}

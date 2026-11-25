@@ -1,0 +1,1229 @@
+{
+  "info": {
+    "_postman_id": "4b82d3e1-314b-4f90-a359-uada00000001",
+    "name": "ClickNova Play (UADA) API",
+    "description": "Full Backend API Collection for ClickNova Play / UADA Platform",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://72-61-235-208.sslip.io",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "YOUR_JWT_TOKEN_HERE",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Auth & Users (/api/signuproute)",
+      "item": [
+        {
+          "name": "1. Send Phone OTP",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://72-61-235-208.sslip.io/api/signuproute/auth/phone/send-otp",
+              "host": [
+                "https://72-61-235-208.sslip.io"
+              ],
+              "path": [
+                "api",
+                "signuproute",
+                "auth",
+                "phone",
+                "send-otp"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone_number\": \"+966500000001\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "2. Phone Signup (Form-Data)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "https://72-61-235-208.sslip.io/api/signuproute/auth/phone/signup",
+              "host": [
+                "https://72-61-235-208.sslip.io"
+              ],
+              "path": [
+                "api",
+                "signuproute",
+                "auth",
+                "phone",
+                "signup"
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "phone_number",
+                  "value": "+966500000001",
+                  "type": "text"
+                },
+                {
+                  "key": "otp",
+                  "value": "123456",
+                  "type": "text"
+                },
+                {
+                  "key": "password",
+                  "value": "SecretPass123!",
+                  "type": "text"
+                },
+                {
+                  "key": "name",
+                  "value": "Fahad Al-Harbi",
+                  "type": "text"
+                },
+                {
+                  "key": "gender",
+                  "value": "male",
+                  "type": "text"
+                },
+                {
+                  "key": "age",
+                  "value": "24",
+                  "type": "text"
+                },
+                {
+                  "key": "role",
+                  "value": "user",
+                  "type": "text"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "3. Login with Unique ID",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://72-61-235-208.sslip.io/api/signuproute/auth/login",
+              "host": [
+                "https://72-61-235-208.sslip.io"
+              ],
+              "path": [
+                "api",
+                "signuproute",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"unique_id\": \"G-532240-2026\",\n  \"password\": \"SecretPass123!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "4. Social Auth (Google/Apple/Snapchat)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://72-61-235-208.sslip.io/api/signuproute/auth/social",
+              "host": [
+                "https://72-61-235-208.sslip.io"
+              ],
+              "path": [
+                "api",
+                "signuproute",
+                "auth",
+                "social"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider\": \"google\",\n  \"provider_id\": \"google-uid-998877\",\n  \"email\": \"gamer@gmail.com\",\n  \"name\": \"Laraib Husain\",\n  \"profile_image\": \"https://images.unsplash.com/photo-1535713875002-d1d0cf377fde\",\n  \"gender\": \"male\",\n  \"age\": 24\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "5. Get My Profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://72-61-235-208.sslip.io/api/signuproute/auth/users/me",
+              "host": [
+                "https://72-61-235-208.sslip.io"
+              ],
+              "path": [
+                "api",
+                "signuproute",
+                "auth",
+                "users",
+                "me"
+              ]
+            }
+          }
+        },
+        {
+          "name": "6. View All Users",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://72-61-235-208.sslip.io/api/signuproute/all_user",
+              "host": [
+                "https://72-61-235-208.sslip.io"
+              ],
+              "path": [
+                "api",
+                "signuproute",
+                "all_user"
+              ]
+            }
+          }
+        },
+        {
+          "name": "7. Update User Profile",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://72-61-235-208.sslip.io/api/signuproute/auth/users/update/1",
+              "host": [
+                "https://72-61-235-208.sslip.io"
+              ],
+              "path": [
+                "api",
+                "signuproute",
+                "auth",
+                "users",
+                "update",
+                "1"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"DARK Lost \\ud83d\\udc51\",\n  \"gender\": \"male\",\n  \"age\": 25\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Friends & Follow (/api/follow)",
+      "item": [
+        {
+          "name": "1. Send Follow Request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://72-61-235-208.sslip.io/api/follow/request/2",
+              "host": [
+                "https://72-61-235-208.sslip.io"
+              ],
+              "path": [
+                "api",
+                "follow",
+                "request",
+                "2"
+              ]
+            }
+          }
+        },
+        {
+          "name": "2. View Pending Requests",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://72-61-235-208.sslip.io/api/follow/requests",
+              "host": [
+                "https://72-61-235-208.sslip.io"
+              ],
+              "path": [
+                "api",
+                "follow",
+                "requests"
+              ]
+            }
+          }
+        },
+        {
+          "name": "3. Accept Follow Request",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://72-61-235-208.sslip.io/api/follow/accept/1",
+              "host": [
+                "https://72-61-235-208.sslip.io"
+              ],
+              "path": [
+                "api",
+                "follow",
+                "accept",
+                "1"
+              ]
+            }
+          }
+        },
+        {
+          "name": "4. Reject Follow Request",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://72-61-235-208.sslip.io/api/follow/reject/1",
+              "host": [
+                "https://72-61-235-208.sslip.io"
+              ],
+              "path": [
+                "api",
+                "follow",
+                "reject",
+                "1"
+              ]
+            }
+          }
+        },
+        {
+          "name": "5. Unfollow User",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://72-61-235-208.sslip.io/api/follow/2",
+              "host": [
+                "https://72-61-235-208.sslip.io"
+              ],
+              "path": [
+                "api",
+                "follow",
+                "2"
+              ]
+            }
+          }
+        },
+        {
+          "name": "6. Get Followers List",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://72-61-235-208.sslip.io/api/follow/followers/1",
+              "host": [
+                "https://72-61-235-208.sslip.io"
+              ],
+              "path": [
+                "api",
+                "follow",
+                "followers",
+                "1"
+              ]
+            }
+          }
+        },
+        {
+          "name": "7. Get Following List",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://72-61-235-208.sslip.io/api/follow/following/1",
+              "host": [
+                "https://72-61-235-208.sslip.io"
+              ],
+              "path": [
+                "api",
+                "follow",
+                "following",
+                "1"
+              ]
+            }
+          }
+        },
+        {
+          "name": "8. Get Follow Stats",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://72-61-235-208.sslip.io/api/follow/stats/1",
+              "host": [
+                "https://72-61-235-208.sslip.io"
+              ],
+              "path": [
+                "api",
+                "follow",
+                "stats",
+                "1"
+              ]
+            }
+          }
+        },
+        {
+          "name": "9. Check Follow Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://72-61-235-208.sslip.io/api/follow/status/2",
+              "host": [
+                "https://72-61-235-208.sslip.io"
+              ],
+              "path": [
+                "api",
+                "follow",
+                "status",
+                "2"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Private Chat (/api/chatroute)",
+      "item": [
+        {
+          "name": "1. View Inbox",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://72-61-235-208.sslip.io/api/chatroute/inbox",
+              "host": [
+                "https://72-61-235-208.sslip.io"
+              ],
+              "path": [
+                "api",
+                "chatroute",
+                "inbox"
+              ]
+            }
+          }
+        },
+        {
+          "name": "2. Start/Get 1-on-1 Chat",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://72-61-235-208.sslip.io/api/chatroute/start/2",
+              "host": [
+                "https://72-61-235-208.sslip.io"
+              ],
+              "path": [
+                "api",
+                "chatroute",
+                "start",
+                "2"
+              ]
+            }
+          }
+        },
+        {
+          "name": "3. Send Message (Text)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://72-61-235-208.sslip.io/api/chatroute/1/send",
+              "host": [
+                "https://72-61-235-208.sslip.io"
+              ],
+              "path": [
+                "api",
+                "chatroute",
+                "1",
+                "send"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message_type\": \"text\",\n  \"content\": \"Hey! Ready for a quick game of Ludo?\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "4. Send Voice Note Simulation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://72-61-235-208.sslip.io/api/chatroute/1/send",
+              "host": [
+                "https://72-61-235-208.sslip.io"
+              ],
+              "path": [
+                "api",
+                "chatroute",
+                "1",
+                "send"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message_type\": \"voice\",\n  \"content\": \"\\ud83c\\udfa4 Voice message (0:04)\",\n  \"media_duration\": 4\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "5. View Chat History",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://72-61-235-208.sslip.io/api/chatroute/1/messages?limit=50&offset=0",
+              "host": [
+                "https://72-61-235-208.sslip.io"
+              ],
+              "path": [
+                "api",
+                "chatroute",
+                "1",
+                "messages?limit=50&offset=0"
+              ]
+            }
+          }
+        },
+        {
+          "name": "6. Mark Messages Read",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://72-61-235-208.sslip.io/api/chatroute/1/read",
+              "host": [
+                "https://72-61-235-208.sslip.io"
+              ],
+              "path": [
+                "api",
+                "chatroute",
+                "1",
+                "read"
+              ]
+            }
+          }
+        },
+        {
+          "name": "7. React to Message",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://72-61-235-208.sslip.io/api/chatroute/message/1/react",
+              "host": [
+                "https://72-61-235-208.sslip.io"
+              ],
+              "path": [
+                "api",
+                "chatroute",
+                "message",
+                "1",
+                "react"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"emoji\": \"\\u2764\\ufe0f\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "8. Edit Message",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://72-61-235-208.sslip.io/api/chatroute/message/1/edit",
+              "host": [
+                "https://72-61-235-208.sslip.io"
+              ],
+              "path": [
+                "api",
+                "chatroute",
+                "message",
+                "1",
+                "edit"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Updated message text\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "9. Delete Message",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://72-61-235-208.sslip.io/api/chatroute/message/1?forEveryone=true",
+              "host": [
+                "https://72-61-235-208.sslip.io"
+              ],
+              "path": [
+                "api",
+                "chatroute",
+                "message",
+                "1?forEveryone=true"
+              ]
+            }
+          }
+        },
+        {
+          "name": "10. Search Inside Chat",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://72-61-235-208.sslip.io/api/chatroute/1/search?q=Ludo",
+              "host": [
+                "https://72-61-235-208.sslip.io"
+              ],
+              "path": [
+                "api",
+                "chatroute",
+                "1",
+                "search?q=Ludo"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Moments (/api/momentroute)",
+      "item": [
+        {
+          "name": "1. View All Moments Feed",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://72-61-235-208.sslip.io/api/momentroute/moments?limit=20&offset=0",
+              "host": [
+                "https://72-61-235-208.sslip.io"
+              ],
+              "path": [
+                "api",
+                "momentroute",
+                "moments?limit=20&offset=0"
+              ]
+            }
+          }
+        },
+        {
+          "name": "2. Post New Moment (Form-Data)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://72-61-235-208.sslip.io/api/momentroute/moments",
+              "host": [
+                "https://72-61-235-208.sslip.io"
+              ],
+              "path": [
+                "api",
+                "momentroute",
+                "moments"
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "caption",
+                  "value": "Just scored Top 1 in Ludo Championship! \ud83c\udfc6",
+                  "type": "text"
+                },
+                {
+                  "key": "image",
+                  "type": "file",
+                  "src": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "3. View User Moments",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://72-61-235-208.sslip.io/api/momentroute/moments/user/1",
+              "host": [
+                "https://72-61-235-208.sslip.io"
+              ],
+              "path": [
+                "api",
+                "momentroute",
+                "moments",
+                "user",
+                "1"
+              ]
+            }
+          }
+        },
+        {
+          "name": "4. React to Moment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://72-61-235-208.sslip.io/api/momentroute/moments/1/react",
+              "host": [
+                "https://72-61-235-208.sslip.io"
+              ],
+              "path": [
+                "api",
+                "momentroute",
+                "moments",
+                "1",
+                "react"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reaction_type\": \"fire\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "5. View Moment Reactions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://72-61-235-208.sslip.io/api/momentroute/moments/1/reactions",
+              "host": [
+                "https://72-61-235-208.sslip.io"
+              ],
+              "path": [
+                "api",
+                "momentroute",
+                "moments",
+                "1",
+                "reactions"
+              ]
+            }
+          }
+        },
+        {
+          "name": "6. Delete Moment",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://72-61-235-208.sslip.io/api/momentroute/moments/1",
+              "host": [
+                "https://72-61-235-208.sslip.io"
+              ],
+              "path": [
+                "api",
+                "momentroute",
+                "moments",
+                "1"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Block System (/api/blockroute)",
+      "item": [
+        {
+          "name": "1. Block User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://72-61-235-208.sslip.io/api/blockroute/2",
+              "host": [
+                "https://72-61-235-208.sslip.io"
+              ],
+              "path": [
+                "api",
+                "blockroute",
+                "2"
+              ]
+            }
+          }
+        },
+        {
+          "name": "2. Unblock User",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://72-61-235-208.sslip.io/api/blockroute/2",
+              "host": [
+                "https://72-61-235-208.sslip.io"
+              ],
+              "path": [
+                "api",
+                "blockroute",
+                "2"
+              ]
+            }
+          }
+        },
+        {
+          "name": "3. View Blocked List",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://72-61-235-208.sslip.io/api/blockroute/list",
+              "host": [
+                "https://72-61-235-208.sslip.io"
+              ],
+              "path": [
+                "api",
+                "blockroute",
+                "list"
+              ]
+            }
+          }
+        },
+        {
+          "name": "4. View Blocked Count",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://72-61-235-208.sslip.io/api/blockroute/count",
+              "host": [
+                "https://72-61-235-208.sslip.io"
+              ],
+              "path": [
+                "api",
+                "blockroute",
+                "count"
+              ]
+            }
+          }
+        },
+        {
+          "name": "5. Check Block Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://72-61-235-208.sslip.io/api/blockroute/status/2",
+              "host": [
+                "https://72-61-235-208.sslip.io"
+              ],
+              "path": [
+                "api",
+                "blockroute",
+                "status",
+                "2"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Reports (/api/report)",
+      "item": [
+        {
+          "name": "1. Submit Report Against User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://72-61-235-208.sslip.io/api/report/report/2",
+              "host": [
+                "https://72-61-235-208.sslip.io"
+              ],
+              "path": [
+                "api",
+                "report",
+                "report",
+                "2"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Inappropriate Language\",\n  \"description\": \"Abusive language in voice room.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "2. View My Reports",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://72-61-235-208.sslip.io/api/report/report/my-reports",
+              "host": [
+                "https://72-61-235-208.sslip.io"
+              ],
+              "path": [
+                "api",
+                "report",
+                "report",
+                "my-reports"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Promotional Banners (/api/banner)",
+      "item": [
+        {
+          "name": "1. Get Active Banners",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://72-61-235-208.sslip.io/api/banner",
+              "host": [
+                "https://72-61-235-208.sslip.io"
+              ],
+              "path": [
+                "api",
+                "banner"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

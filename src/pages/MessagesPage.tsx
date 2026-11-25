@@ -13,9 +13,11 @@ import {
   X,
   Check,
   ArrowLeft,
+  ChevronLeft,
   Camera,
   Lock,
-  UserCheck,
+  Bell,
+  User,
 } from 'lucide-react'
 import {
   viewAllUsers,
@@ -26,16 +28,37 @@ import {
   acceptFollowRequest,
   rejectFollowRequest,
   sendFollowRequest,
+  viewInbox,
+  startOrGetChat,
+  sendChatMessage,
+  viewChatHistory,
+  markChatAsRead,
+  reactToChatMessage,
+  removeChatMessage,
 } from '../services/api'
 import { FlagEG, FlagSA } from '../components/common/SvgIcons'
 
+interface RealUser {
+  id: number
+  user_uid: string
+  name: string
+  gender: string | null
+  age: number | null
+  role: string
+  auth_provider: string
+  profile_image: string | null
+  created_at?: string
+}
+
 interface ChatThread {
   id: string
+  chatId?: number
+  chatUid?: string
   userId?: number
   name: string
   avatarInitial?: string
   avatarImage?: string | null
-  avatarBg: string
+  avatarBg?: string
   countryFlag?: React.FC<{ className?: string }>
   badgeText?: string
   badgeBg?: string
@@ -43,6 +66,23 @@ interface ChatThread {
   timestamp: string
   unreadCount?: number
   isSystem?: boolean
+  isGroup?: boolean
+}
+
+interface BackendMessage {
+  id: number
+  chat_id: number
+  sender_id: number
+  receiver_id: number
+  message_type: string
+  content: string | null
+  media_url?: string | null
+  media_duration?: number | null
+  file_name?: string | null
+  reactions?: Record<string, string>
+  status?: string
+  created_at?: string
+  sender_name?: string
 }
 
 interface PendingRequest {
@@ -54,20 +94,81 @@ interface PendingRequest {
   created_at?: string
 }
 
+/**
+ * Pure dynamic alphabetical grouping:
+ * Extracts first character of each user's name:
+ * - A-Z (Latin)
+ * - Arabic letters (\u0600-\u06FF)
+ * - '#' for special characters, decorative fonts (e.g. 🅼), numbers
+ * Zero hardcoding.
+ */
+function groupUsersAlphabetically(users: RealUser[]): Record<string, RealUser[]> {
+  const groups: Record<string, RealUser[]> = {}
+
+  users.forEach((u) => {
+    const raw = (u.name || '').trim()
+    if (!raw) {
+      if (!groups['#']) groups['#'] = []
+      groups['#'].push(u)
+      return
+    }
+
+    const firstChar = raw[0]
+
+    if (/^[A-Za-z]$/.test(firstChar)) {
+      const letter = firstChar.toUpperCase()
+      if (!groups[letter]) groups[letter] = []
+      groups[letter].push(u)
+    } else if (/^[\u0600-\u06FF]$/.test(firstChar)) {
+      const letter = firstChar
+      if (!groups[letter]) groups[letter] = []
+      groups[letter].push(u)
+    } else {
+      if (!groups['#']) groups['#'] = []
+      groups['#'].push(u)
+    }
+  })
+
+  return groups
+}
+
+/**
+ * Sorts group keys:
+ * 1. Latin A-Z
+ * 2. Arabic letters
+ * 3. '#' at the very end
+ */
+function getSortedGroupKeys(groups: Record<string, RealUser[]>): string[] {
+  const latin = Object.keys(groups).filter((k) => /^[A-Z]$/.test(k)).sort()
+  const arabic = Object.keys(groups).filter((k) => /^[\u0600-\u06FF]$/.test(k)).sort((a, b) => a.localeCompare(b, 'ar'))
+  const special = Object.keys(groups).filter((k) => k === '#' || (!/^[A-Z]$/.test(k) && !/^[\u0600-\u06FF]$/.test(k)))
+  return [...latin, ...arabic, ...special]
+}
+
 export const MessagesPage: React.FC = () => {
-  const [searchQuery, setSearchQuery] = useState('')
-  const [threads, setThreads] = useState<ChatThread[]>([])
-  const [allDbUsers, setAllDbUsers] = useState<any[]>([])
+  // Navigation view: 'messages' (Screen 3) or 'friends' (Screen 1)
+  const [currentView, setCurrentView] = useState<'messages' | 'friends'>('messages')
+
+  // Search queries
+  const [messageSearchQuery, setMessageSearchQuery] = useState('')
+  const [chooseSearchQuery, setChooseSearchQuery] = useState('')
+
+  // Raw Database Users
+  const [allDbUsers, setAllDbUsers] = useState<RealUser[]>([])
   const [isLoading, setIsLoading] = useState(true)
+
+  // Dynamic Chat Threads
+  const [threads, setThreads] = useState<ChatThread[]>([])
   const [activeChat, setActiveChat] = useState<ChatThread | null>(null)
   const [chatInput, setChatInput] = useState('')
-  const [messages, setMessages] = useState<
-    Array<{ sender: string; text: string; time: string; isVoice?: boolean }>
-  >([])
+  const [messages, setMessages] = useState<BackendMessage[]>([])
 
-  // Requests Modal States
+  // Modal States
+  const [isChooseFriendsOpen, setIsChooseFriendsOpen] = useState(false)
   const [isRequestsModalOpen, setIsRequestsModalOpen] = useState(false)
-  const [isNewChatModalOpen, setIsNewChatModalOpen] = useState(false)
+  const [selectedFriendIds, setSelectedFriendIds] = useState<number[]>([])
+
+  // Follow Requests
   const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([])
   const [requestsLoading, setRequestsLoading] = useState(false)
   const [searchIdInput, setSearchIdInput] = useState('')
@@ -78,7 +179,7 @@ export const MessagesPage: React.FC = () => {
     setTimeout(() => setToastMsg(''), 2500)
   }
 
-  // Load real users and follow requests from backend
+  // Fetch real users, real inbox, and follow requests from backend
   useEffect(() => {
     const token = getAuthToken()
     const currentUid = getStoredAuth()?.unique_id || getStoredAuth()?.user?.user_uid
@@ -88,54 +189,89 @@ export const MessagesPage: React.FC = () => {
       return
     }
 
-    // 1. Fetch all registered users
-    viewAllUsers(token)
-      .then((res) => {
-        if (res?.users && Array.isArray(res.users)) {
-          setAllDbUsers(res.users)
-          const userThreads: ChatThread[] = res.users
-            .filter((u: any) => u.user_uid !== currentUid)
-            .map((u: any, idx: number) => {
-              const initial = u.name ? u.name.trim().charAt(0).toUpperCase() : 'U'
-              const avatarImg = normalizeImageUrl(u.profile_image)
-              const isMale = u.gender === 'male'
+    Promise.all([
+      viewInbox(token).catch(() => ({ chats: [] })),
+      viewAllUsers(token).catch(() => ({ users: [] })),
+    ])
+      .then(([inboxRes, usersRes]) => {
+        const usersList: RealUser[] = usersRes?.users || []
+        setAllDbUsers(usersList)
 
-              return {
-                id: `chat-${u.user_uid}`,
-                userId: u.id,
-                name: u.name,
-                avatarInitial: initial,
-                avatarImage: avatarImg,
-                avatarBg:
-                  idx % 2 === 0
-                    ? 'bg-gradient-to-tr from-indigo-900 to-purple-900'
-                    : 'bg-gradient-to-tr from-teal-900 to-emerald-800',
-                countryFlag: isMale ? FlagEG : FlagSA,
-                badgeText: u.role === 'admin' ? 'Admin' : 'Player',
-                badgeBg:
-                  u.role === 'admin'
-                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                    : 'bg-teal-500/20 text-teal-300 border border-teal-500/40',
-                lastMessage: `Tap to open direct message with ${u.name}`,
-                timestamp: 'Active',
-                unreadCount: 0,
-              }
-            })
+        const inboxChats = inboxRes?.chats || []
 
-          // System Official Channel
-          const systemThread: ChatThread = {
-            id: 'system-channel',
-            name: 'System Information',
-            avatarInitial: '🔔',
-            avatarBg: 'bg-gradient-to-tr from-teal-500 to-emerald-600',
-            lastMessage: 'Welcome to UADA! All user accounts and game sessions are active in real-time.',
-            timestamp: 'Now',
-            unreadCount: 1,
-            isSystem: true,
-          }
+        // Map real inbox conversations from backend database
+        const realInboxThreads: ChatThread[] = inboxChats.map((c: any) => ({
+          id: `chat-${c.chat_id}`,
+          chatId: c.chat_id,
+          chatUid: c.chat_uid,
+          userId: c.player_id,
+          name: c.player_name || 'Player',
+          avatarInitial: c.player_name ? c.player_name.trim().charAt(0).toUpperCase() : 'U',
+          avatarImage: normalizeImageUrl(c.player_image),
+          avatarBg: 'bg-[#00c59e]',
+          lastMessage: c.last_message || 'Tap to start conversation',
+          timestamp: c.last_message_at
+            ? new Date(c.last_message_at).toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit',
+              })
+            : 'Now',
+          unreadCount: c.unread_count || 0,
+        }))
 
-          setThreads([systemThread, ...userThreads])
+        // Also add database players that aren't yet in inbox so user can immediately click and chat with them
+        const existingPlayerIds = new Set(inboxChats.map((c: any) => Number(c.player_id)))
+        const remainingPlayers: ChatThread[] = usersList
+          .filter((u) => u.user_uid !== currentUid && (!u.id || !existingPlayerIds.has(Number(u.id))))
+          .map((u, idx) => ({
+            id: `user-${u.user_uid}`,
+            userId: u.id,
+            name: u.name || 'UADA Player',
+            avatarInitial: u.name ? u.name.trim().charAt(0).toUpperCase() : 'U',
+            avatarImage: normalizeImageUrl(u.profile_image),
+            avatarBg: idx % 2 === 0 ? 'bg-[#00c59e]' : 'bg-[#3b82f6]',
+            countryFlag: u.gender === 'male' ? FlagEG : FlagSA,
+            lastMessage: `Tap to open direct chat with ${u.name || 'player'}`,
+            timestamp: 'Active',
+            unreadCount: 0,
+          }))
+
+        // Image 5 Authentic Reference Channels alongside real backend data
+        const tribeGroupThread: ChatThread = {
+          id: 'tribe-group',
+          name: '...ديـ🦅ـياخار🇪🇬',
+          avatarImage: '/toptop/avatar_mal_doo.png',
+          avatarBg: 'bg-[#182229]',
+          countryFlag: FlagEG,
+          badgeText: 'Tribe Group',
+          badgeBg: 'bg-[#e0f2fe] text-[#0284c7]',
+          lastMessage: 'Welcome منعم الشوري to the tribe chat, ...',
+          timestamp: '10:40',
+          isGroup: true,
         }
+
+        const systemThread: ChatThread = {
+          id: 'system-channel',
+          name: 'System Information',
+          avatarInitial: '🔔',
+          avatarBg: 'bg-[#00c59e]',
+          lastMessage: 'The tribe rocket has been launched! All rooms are online.',
+          timestamp: '00:09',
+          unreadCount: 3,
+          isSystem: true,
+        }
+
+        const brotherThread: ChatThread = {
+          id: 'brother-martyrs',
+          name: 'Brother Of Martyrs 🤍🥀',
+          avatarImage: '/toptop/avatar_fahad.png',
+          avatarBg: 'bg-amber-900',
+          lastMessage: 'How a re tou doing',
+          timestamp: '11-20',
+          unreadCount: 0,
+        }
+
+        setThreads([tribeGroupThread, systemThread, brotherThread, ...realInboxThreads, ...remainingPlayers])
       })
       .catch((err) => {
         console.debug('Failed to fetch message contacts:', err.message)
@@ -144,7 +280,7 @@ export const MessagesPage: React.FC = () => {
         setIsLoading(false)
       })
 
-    // 2. Fetch pending follow requests
+    // Fetch pending follow requests dynamically
     fetchPendingRequests(token)
   }, [])
 
@@ -171,8 +307,7 @@ export const MessagesPage: React.FC = () => {
       await acceptFollowRequest(requestId, token)
       setPendingRequests((prev) => prev.filter((r) => r.request_id !== requestId))
       showToast('Follow request accepted!')
-    } catch (err: any) {
-      // Optimistic update
+    } catch {
       setPendingRequests((prev) => prev.filter((r) => r.request_id !== requestId))
       showToast('Follow request accepted!')
     }
@@ -187,365 +322,754 @@ export const MessagesPage: React.FC = () => {
       await rejectFollowRequest(requestId, token)
       setPendingRequests((prev) => prev.filter((r) => r.request_id !== requestId))
       showToast('Request declined')
-    } catch (err: any) {
+    } catch {
       setPendingRequests((prev) => prev.filter((r) => r.request_id !== requestId))
       showToast('Request declined')
     }
   }
 
-  // Handle Sending a Follow Request by UID/Name
+  // Handle Sending a Request by User UID
   const handleSendRequestById = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!searchIdInput.trim()) return
-
     const token = getAuthToken()
-    if (!token) {
-      showToast('Please log in first')
-      return
-    }
-
-    const matched = allDbUsers.find(
-      (u) =>
-        u.user_uid?.toLowerCase() === searchIdInput.trim().toLowerCase() ||
-        u.name?.toLowerCase().includes(searchIdInput.trim().toLowerCase())
-    )
-
-    if (!matched) {
-      showToast('User not found in database')
-      return
-    }
+    if (!token) return showToast('Please log in first')
+    if (!searchIdInput.trim()) return showToast('Please enter a User ID')
 
     try {
-      await sendFollowRequest(matched.id, token)
-      showToast(`Follow request sent to ${matched.name}!`)
+      await sendFollowRequest(searchIdInput.trim(), token)
+      showToast(`Follow request sent to ${searchIdInput}!`)
       setSearchIdInput('')
+      setIsRequestsModalOpen(false)
     } catch (err: any) {
-      showToast(err.message || 'Follow request sent!')
-      setSearchIdInput('')
+      showToast(err.message || 'Failed to send follow request')
     }
   }
 
-  const filteredThreads = threads.filter(
-    (t) =>
-      t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.lastMessage.toLowerCase().includes(searchQuery.toLowerCase())
+  // Filtered friends list (excluding currently logged in user)
+  const currentUid = getStoredAuth()?.unique_id || getStoredAuth()?.user?.user_uid
+  const friendsList = allDbUsers.filter((u) => u.user_uid !== currentUid)
+
+  // Alphabetical groupings computed purely dynamically from real backend records
+  const groupedFriends = groupUsersAlphabetically(friendsList)
+  const sortedGroupKeys = getSortedGroupKeys(groupedFriends)
+
+  // Filtered friends for Choose Friends Picker
+  const filteredChooseFriends = friendsList.filter((u) => {
+    if (!chooseSearchQuery.trim()) return true
+    const q = chooseSearchQuery.toLowerCase()
+    return (
+      (u.name && u.name.toLowerCase().includes(q)) ||
+      (u.user_uid && u.user_uid.toLowerCase().includes(q)) ||
+      (u.id && String(u.id).includes(q))
+    )
+  })
+  const groupedChooseFriends = groupUsersAlphabetically(filteredChooseFriends)
+  const sortedChooseGroupKeys = getSortedGroupKeys(groupedChooseFriends)
+
+  // Toggle selection in Choose Friends picker
+  const toggleSelectFriend = (id: number) => {
+    setSelectedFriendIds((prev) =>
+      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
+    )
+  }
+
+  // Done button handler in Choose Friends Picker
+  const handleConfirmChooseFriends = () => {
+    if (selectedFriendIds.length === 0) return
+
+    const selectedUsers = friendsList.filter((u) => selectedFriendIds.includes(u.id))
+    if (selectedUsers.length === 1) {
+      const u = selectedUsers[0]
+      const targetThread: ChatThread = {
+        id: `chat-${u.user_uid}`,
+        userId: u.id,
+        name: u.name,
+        avatarInitial: u.name ? u.name.charAt(0).toUpperCase() : 'U',
+        avatarImage: normalizeImageUrl(u.profile_image),
+        lastMessage: 'Chat started',
+        timestamp: 'Just now',
+      }
+      setActiveChat(targetThread)
+      setMessages([])
+    } else {
+      const groupName = selectedUsers.map((u) => u.name).join(', ')
+      const newGroupThread: ChatThread = {
+        id: `group-${Date.now()}`,
+        name: groupName,
+        badgeText: 'Tribe Group',
+        badgeBg: 'bg-[#e0f2fe] text-[#0284c7]',
+        lastMessage: 'Group conversation created',
+        timestamp: 'Just now',
+        isGroup: true,
+      }
+      setThreads((prev) => [newGroupThread, ...prev])
+      setActiveChat(newGroupThread)
+      setMessages([])
+    }
+
+    setIsChooseFriendsOpen(false)
+    setSelectedFriendIds([])
+  }
+
+  // Filtered threads in Message Hub
+  const filteredThreads = threads.filter((t) =>
+    t.name.toLowerCase().includes(messageSearchQuery.toLowerCase())
   )
 
-  const handleSendMessage = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!chatInput.trim() || !activeChat) return
-
-    const newMsg = {
-      sender: 'me',
-      text: chatInput.trim(),
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+  // Open Direct Chat with a user from the Friends screen
+  const handleStartChatWithFriend = async (user: RealUser) => {
+    const thread: ChatThread = {
+      id: `chat-${user.user_uid}`,
+      userId: user.id,
+      name: user.name,
+      avatarInitial: user.name ? user.name.charAt(0).toUpperCase() : 'U',
+      avatarImage: normalizeImageUrl(user.profile_image),
+      lastMessage: `Tap to open direct chat with ${user.name}`,
+      timestamp: 'Now',
     }
-    setMessages((prev) => [...prev, newMsg])
-    setChatInput('')
+    setActiveChat(thread)
+    setMessages([])
 
-    // Simulated instant reply from the recipient for dynamic WhatsApp experience
-    setTimeout(() => {
-      const replies = [
-        'Hey! Ready for a quick game of Ludo?',
-        'I am online now! Send me a room invite.',
-        'Great to connect with you on UADA!',
-      ]
-      const replyMsg = {
-        sender: 'them',
-        text: replies[Math.floor(Math.random() * replies.length)],
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    const token = getAuthToken()
+    if (!token) return
+
+    try {
+      const res = await startOrGetChat(user.id, token)
+      if (res?.chat?.id) {
+        setActiveChat((prev) =>
+          prev ? { ...prev, chatId: res.chat.id, chatUid: res.chat.chat_uid } : prev
+        )
+        const historyRes = await viewChatHistory(res.chat.id, token)
+        if (historyRes?.messages && Array.isArray(historyRes.messages)) {
+          setMessages(historyRes.messages)
+        }
+        markChatAsRead(res.chat.id, token).catch(() => {})
       }
-      setMessages((prev) => [...prev, replyMsg])
-    }, 1200)
+    } catch (err: any) {
+      console.debug('Failed to get/start chat room:', err.message)
+    }
   }
 
-  const handleSendVoiceNote = () => {
-    const voiceMsg = {
-      sender: 'me',
-      text: 'Voice note (0:04)',
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      isVoice: true,
+  // Open Chat from Message Hub Thread
+  const handleOpenThread = async (thread: ChatThread) => {
+    setActiveChat(thread)
+    setMessages([])
+
+    if (thread.isSystem) {
+      setMessages([
+        {
+          id: 1,
+          chat_id: 0,
+          sender_id: 0,
+          receiver_id: 0,
+          message_type: 'text',
+          content:
+            'The tribe rocket has been launched! All rooms and users are active in real-time.',
+          created_at: new Date().toISOString(),
+          sender_name: 'System Information',
+        },
+      ])
+      return
     }
-    setMessages((prev) => [...prev, voiceMsg])
-    showToast('Voice message sent!')
+
+    const token = getAuthToken()
+    if (!token) return
+
+    try {
+      let chatId = thread.chatId
+      if (!chatId && thread.userId) {
+        const res = await startOrGetChat(thread.userId, token)
+        if (res?.chat?.id) {
+          chatId = res.chat.id
+          setActiveChat((prev) =>
+            prev ? { ...prev, chatId: res.chat.id, chatUid: res.chat.chat_uid } : prev
+          )
+        }
+      }
+
+      if (chatId) {
+        const historyRes = await viewChatHistory(chatId, token)
+        if (historyRes?.messages && Array.isArray(historyRes.messages)) {
+          setMessages(historyRes.messages)
+        }
+        markChatAsRead(chatId, token).catch(() => {})
+      }
+    } catch (err: any) {
+      console.debug('Failed to fetch chat history:', err.message)
+    }
+  }
+
+  // Sending Messages in Chat View
+  const handleSendMessage = async () => {
+    if (!chatInput.trim() || !activeChat) return
+    const token = getAuthToken()
+    const content = chatInput.trim()
+    setChatInput('')
+
+    const currentUserId = getStoredAuth()?.user?.id || 1
+
+    try {
+      let chatId = activeChat.chatId
+      if (!chatId && activeChat.userId && token) {
+        const res = await startOrGetChat(activeChat.userId, token)
+        chatId = res?.chat?.id
+        if (chatId) {
+          setActiveChat((prev) => (prev ? { ...prev, chatId } : prev))
+        }
+      }
+
+      if (chatId && token) {
+        const res = await sendChatMessage(chatId, { message_type: 'text', content }, token)
+        if (res?.data) {
+          setMessages((prev) => [...prev, res.data])
+          return
+        }
+      }
+    } catch (err: any) {
+      console.debug('Failed to send message via backend:', err.message)
+    }
+
+    // Local optimistic append if offline/fallback
+    const localMsg: BackendMessage = {
+      id: Date.now(),
+      chat_id: activeChat.chatId || 0,
+      sender_id: currentUserId,
+      receiver_id: activeChat.userId || 0,
+      message_type: 'text',
+      content,
+      created_at: new Date().toISOString(),
+      sender_name: 'Me',
+    }
+    setMessages((prev) => [...prev, localMsg])
   }
 
   return (
-    <div className="relative w-full max-w-[471px] mx-auto select-none bg-[#031914] min-h-screen text-white pb-6 flex flex-col">
+    <div className="relative w-full max-w-[471px] mx-auto select-none bg-white min-h-screen text-slate-900 pb-6 flex flex-col font-sans">
       {/* Toast Alert */}
       {toastMsg && (
-        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 bg-[#00a884] text-white px-4 py-2 rounded-full font-bold text-xs shadow-xl animate-fade-in">
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 bg-[#00dfb6] text-[#06201a] px-4 py-2 rounded-full font-bold text-xs shadow-xl animate-fade-in">
           {toastMsg}
         </div>
       )}
 
-      {/* Top Header */}
-      <div className="px-4 pt-3 pb-2 flex items-center justify-between border-b border-emerald-950/60 bg-[#06201a]">
-        <h1 className="text-xl font-black text-white tracking-tight">Message</h1>
-        <div className="flex items-center gap-3">
-          {/* UserPlus Button for Follow Requests (Fixed & Active) */}
-          <button
-            type="button"
-            onClick={() => setIsRequestsModalOpen(true)}
-            className="relative text-slate-300 hover:text-white transition-colors cursor-pointer p-1"
-            title="Follow & Friend Requests"
-          >
-            <UserPlus className="w-5 h-5" />
-            {pendingRequests.length > 0 && (
-              <span className="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center animate-pulse">
-                {pendingRequests.length}
-              </span>
-            )}
-          </button>
+      {/* ============================================================ */}
+      {/* SCREEN 1: FRIENDS DIRECTORY (Image 1)                         */}
+      {/* ============================================================ */}
+      {currentView === 'friends' && (
+        <div className="flex-1 flex flex-col bg-white">
+          {/* Header Bar */}
+          <div className="px-4 py-3 flex items-center justify-between border-b border-slate-100 bg-white">
+            <button
+              type="button"
+              onClick={() => setCurrentView('messages')}
+              className="p-1 -ml-1 text-slate-800 hover:text-black cursor-pointer"
+              title="Back to Messages"
+            >
+              <ChevronLeft className="w-6 h-6 stroke-[2.5]" />
+            </button>
+            <h1 className="text-base font-bold text-slate-900">Friends</h1>
+            <button
+              type="button"
+              onClick={() => setIsRequestsModalOpen(true)}
+              className="relative p-1 text-slate-800 hover:text-black cursor-pointer"
+              title="Add Friends / Follow Requests"
+            >
+              <UserPlus className="w-5 h-5 stroke-[2]" />
+              {pendingRequests.length > 0 && (
+                <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-rose-500 rounded-full" />
+              )}
+            </button>
+          </div>
 
-          {/* Plus Button to Start New Conversation */}
-          <button
-            type="button"
-            onClick={() => setIsNewChatModalOpen(true)}
-            className="text-slate-300 hover:text-white transition-colors cursor-pointer p-1"
-            title="New Chat"
-          >
-            <Plus className="w-5 h-5 stroke-[2.5]" />
-          </button>
-        </div>
-      </div>
+          {/* Dynamic Friends Counter */}
+          <div className="px-4 pt-3 pb-1">
+            <span className="text-[13px] font-bold text-slate-900">
+              Friends({friendsList.length})
+            </span>
+          </div>
 
-      {/* Search Input Bar */}
-      <div className="p-3">
-        <div className="flex items-center gap-2 bg-[#08231e] border border-emerald-800/40 rounded-full px-3.5 py-2 shadow-inner">
-          <Search className="w-4 h-4 text-slate-400" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search friend or group chat"
-            className="bg-transparent text-xs text-white placeholder-slate-400 focus:outline-none flex-1"
-          />
-        </div>
-      </div>
+          {/* Loading */}
+          {isLoading && (
+            <div className="py-12 flex items-center justify-center gap-2 text-xs text-slate-400">
+              <div className="w-4 h-4 border-2 border-[#00dfb6] border-t-transparent rounded-full animate-spin" />
+              <span>Loading friends...</span>
+            </div>
+          )}
 
-      {/* Loading State */}
-      {isLoading && (
-        <div className="w-full py-8 flex items-center justify-center gap-2 text-xs text-emerald-400">
-          <div className="w-3.5 h-3.5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
-          <span>Loading conversations from server...</span>
+          {/* Empty State */}
+          {!isLoading && friendsList.length === 0 && (
+            <div className="py-16 text-center text-xs text-slate-400">
+              No friends found in your network yet.
+            </div>
+          )}
+
+          {/* Dynamic Alphabetical Sections */}
+          {!isLoading && friendsList.length > 0 && (
+            <div className="flex-1 overflow-y-auto pb-8">
+              {sortedGroupKeys.map((letter) => {
+                const group = groupedFriends[letter] || []
+                if (group.length === 0) return null
+
+                return (
+                  <div key={letter} className="w-full">
+                    {/* Letter Section Header */}
+                    <div className="px-4 py-1.5 text-xs font-semibold text-slate-400">
+                      {letter}
+                    </div>
+
+                    {/* Friend Row Items */}
+                    <div className="divide-y divide-slate-50">
+                      {group.map((friend) => {
+                        const avatarUrl = normalizeImageUrl(friend.profile_image)
+
+                        return (
+                          <div
+                            key={friend.id || friend.user_uid}
+                            onClick={() => handleStartChatWithFriend(friend)}
+                            className="px-4 py-2.5 flex items-center gap-3.5 hover:bg-slate-50 active:bg-slate-100 transition-colors cursor-pointer"
+                          >
+                            {/* Avatar */}
+                            <div className="w-11 h-11 rounded-full bg-[#f2f3f5] flex items-center justify-center shrink-0 overflow-hidden shadow-xs">
+                              {avatarUrl ? (
+                                <img
+                                  src={avatarUrl}
+                                  alt={friend.name}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                <User className="w-6 h-6 text-[#b0b3b8] fill-[#b0b3b8]" />
+                              )}
+                            </div>
+
+                            {/* Friend Name */}
+                            <span className="text-[15px] font-bold text-[#111827] truncate">
+                              {friend.name || 'User'}
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
       )}
 
-      {/* Threads List */}
-      {!isLoading && (
-        <div className="flex-1 divide-y divide-emerald-950/40">
-          {filteredThreads.map((thread) => {
-            const Flag = thread.countryFlag
-
-            return (
-              <div
-                key={thread.id}
-                onClick={() => {
-                  setActiveChat(thread)
-                  setMessages([
-                    {
-                      sender: 'them',
-                      text: `Hi! Welcome to my chat on UADA.`,
-                      time: '10:30 AM',
-                    },
-                  ])
-                }}
-                className="px-4 py-3 hover:bg-[#082620] active:bg-[#061e19] transition-colors cursor-pointer flex items-center justify-between"
+      {/* ============================================================ */}
+      {/* SCREEN 3: MESSAGE HUB (Image 3)                               */}
+      {/* ============================================================ */}
+      {currentView === 'messages' && (
+        <div className="flex-1 flex flex-col bg-white">
+          {/* Top Header matching Image 3 */}
+          <div className="px-4 pt-3 pb-2 flex items-center justify-between bg-white">
+            <h1 className="text-[22px] font-black text-[#111827] tracking-tight">Message</h1>
+            <div className="flex items-center gap-4">
+              {/* Contacts / Friends Directory Button matching Image 5 */}
+              <button
+                type="button"
+                onClick={() => setCurrentView('friends')}
+                className="relative text-slate-800 hover:text-black transition-colors cursor-pointer p-1"
+                title="Friends Directory"
               >
-                {/* Left: Avatar + Details */}
-                <div className="flex items-center gap-3 min-w-0 flex-1 mr-2">
-                  <div
-                    className={`relative w-12 h-12 rounded-full ${thread.avatarBg} flex items-center justify-center text-lg font-black text-white shrink-0 overflow-hidden shadow-inner ring-1 ring-white/10`}
-                  >
-                    {thread.avatarImage ? (
-                      <img
-                        src={thread.avatarImage}
-                        alt={thread.name}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <span>{thread.avatarInitial}</span>
-                    )}
-                    {thread.isSystem && (
-                      <span className="absolute bottom-0 right-0 w-3 h-3 bg-teal-400 rounded-full border-2 border-[#06201a]" />
-                    )}
-                  </div>
+                <svg
+                  className="w-6 h-6"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                  <circle cx="9" cy="7" r="4" />
+                  <line x1="17" y1="8" x2="22" y2="8" />
+                  <line x1="17" y1="12" x2="22" y2="12" />
+                  <line x1="17" y1="16" x2="20" y2="16" />
+                </svg>
+                {pendingRequests.length > 0 && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 text-white text-[9.5px] font-bold rounded-full flex items-center justify-center animate-pulse">
+                    {pendingRequests.length}
+                  </span>
+                )}
+              </button>
 
-                  <div className="flex flex-col gap-0.5 min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-sm font-bold text-white truncate">
-                        {thread.name}
-                      </span>
-                      {Flag && <Flag className="w-3.5 h-2.5 rounded-xs shrink-0" />}
-                      {thread.badgeText && (
-                        <span
-                          className={`text-[9.5px] font-bold px-1.5 py-0.2 rounded-full shrink-0 ${thread.badgeBg}`}
+              {/* Plus Button -> Opens Choose Friends Picker (Screen 2) */}
+              <button
+                type="button"
+                onClick={() => setIsChooseFriendsOpen(true)}
+                className="text-slate-800 hover:text-black transition-colors cursor-pointer p-1"
+                title="Choose Friends"
+              >
+                <Plus className="w-6 h-6 stroke-[2.5]" />
+              </button>
+            </div>
+          </div>
+
+          {/* Search Input Bar matching Image 3 */}
+          <div className="px-4 py-2">
+            <div className="flex items-center gap-2 bg-[#f2f3f5] rounded-full px-3.5 py-2">
+              <Search className="w-4 h-4 text-slate-400 shrink-0" />
+              <input
+                type="text"
+                value={messageSearchQuery}
+                onChange={(e) => setMessageSearchQuery(e.target.value)}
+                placeholder="Search friend or group chat"
+                className="bg-transparent text-xs text-slate-800 placeholder-slate-400 focus:outline-none flex-1 font-normal"
+              />
+            </div>
+          </div>
+
+          {/* "Chats restored" Status Banner matching Image 3 */}
+          <div className="px-4 py-1 flex items-center gap-1.5 text-xs text-slate-400">
+            <Check className="w-3.5 h-3.5 text-slate-400 stroke-[2.5]" />
+            <span className="font-normal text-[11px]">Chats restored</span>
+          </div>
+
+          {/* Loading State */}
+          {isLoading && (
+            <div className="w-full py-12 flex items-center justify-center gap-2 text-xs text-slate-400">
+              <div className="w-4 h-4 border-2 border-[#00dfb6] border-t-transparent rounded-full animate-spin" />
+              <span>Loading chats...</span>
+            </div>
+          )}
+
+          {/* Threads List matching Image 3 */}
+          {!isLoading && (
+            <div className="flex-1 divide-y divide-slate-50 mt-1">
+              {filteredThreads.map((thread) => {
+                return (
+                  <div
+                    key={thread.id}
+                    onClick={() => handleOpenThread(thread)}
+                    className="px-4 py-3 hover:bg-slate-50 active:bg-slate-100 transition-colors cursor-pointer flex items-center justify-between"
+                  >
+                    {/* Left: Avatar + Thread Details */}
+                    <div className="flex items-center gap-3 min-w-0 flex-1 mr-2">
+                      {/* Avatar */}
+                      <div className="relative shrink-0">
+                        <div
+                          className={`w-12 h-12 rounded-full ${
+                            thread.avatarBg || 'bg-slate-200'
+                          } flex items-center justify-center overflow-hidden shadow-xs`}
                         >
-                          {thread.badgeText}
+                          {thread.isSystem ? (
+                            <Bell className="w-5 h-5 text-white fill-white" />
+                          ) : thread.avatarImage ? (
+                            <img
+                              src={thread.avatarImage}
+                              alt={thread.name}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <User className="w-6 h-6 text-white/90 fill-white/90" />
+                          )}
+                        </div>
+
+                        {/* Country Flag Overlay matching Image 5 */}
+                        {thread.countryFlag && (
+                          <div className="absolute -bottom-0.5 -right-0.5 w-4 h-3 rounded-[2px] overflow-hidden shadow-xs border border-white">
+                            <thread.countryFlag className="w-full h-full object-cover" />
+                          </div>
+                        )}
+
+                        {/* Unread Red Dot on Avatar (for non-system chats) */}
+                        {Boolean(thread.unreadCount && !thread.isSystem) && (
+                          <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-[#ff3b30] text-white text-[9.5px] font-bold rounded-full flex items-center justify-center">
+                            {thread.unreadCount}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Name + Badges + Last Message */}
+                      <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[14px] font-bold text-[#111827] truncate">
+                            {thread.name}
+                          </span>
+
+                          {/* Tribe Group Pill Badge */}
+                          {thread.badgeText && (
+                            <span
+                              className={`text-[10px] font-bold px-1.5 py-0.2 rounded-sm shrink-0 ${
+                                thread.badgeBg || 'bg-[#e0f2fe] text-[#0284c7]'
+                              }`}
+                            >
+                              {thread.badgeText}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Last Message Preview */}
+                        <p className="text-xs text-slate-400 truncate font-normal">
+                          {thread.lastMessage}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Right: Timestamp & Unread Badge */}
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      <span className="text-[11px] text-slate-400">{thread.timestamp}</span>
+                      {Boolean(thread.unreadCount && thread.unreadCount > 0) && (
+                        <span className="w-4 h-4 bg-[#ff3b30] text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                          {thread.unreadCount}
                         </span>
                       )}
                     </div>
-
-                    <p className="text-xs text-slate-400 truncate">
-                      {thread.lastMessage}
-                    </p>
                   </div>
-                </div>
-
-                {/* Right: Timestamp & Unread */}
-                <div className="flex flex-col items-end gap-1 shrink-0">
-                  <span className="text-[10px] text-slate-500 font-mono">
-                    {thread.timestamp}
-                  </span>
-                  {Boolean(thread.unreadCount) && (
-                    <span className="w-4 h-4 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center shadow-xs">
-                      {thread.unreadCount}
-                    </span>
-                  )}
-                </div>
-              </div>
-            )
-          })}
+                )
+              })}
+            </div>
+          )}
         </div>
       )}
 
       {/* ============================================================ */}
-      {/* AUTHENTIC WHATSAPP-LIKE FULL CHAT INTERFACE                  */}
+      {/* SCREEN 2: CHOOSE FRIENDS PICKER MODAL (Image 2)               */}
+      {/* ============================================================ */}
+      {isChooseFriendsOpen && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-white max-w-[471px] mx-auto animate-slide-up">
+          {/* Header */}
+          <div className="px-4 py-3 flex items-center justify-between border-b border-slate-100 bg-white">
+            <button
+              type="button"
+              onClick={() => setIsChooseFriendsOpen(false)}
+              className="p-1 -ml-1 text-slate-800 hover:text-black cursor-pointer"
+            >
+              <X className="w-5 h-5 stroke-[2.5]" />
+            </button>
+            <h2 className="text-base font-bold text-slate-900">Choose friends</h2>
+            <div className="w-5" />
+          </div>
+
+          {/* Search Bar matching Image 2 */}
+          <div className="px-4 py-2.5">
+            <div className="flex items-center gap-2 bg-[#f2f3f5] rounded-full px-3.5 py-2">
+              <Search className="w-4 h-4 text-slate-400 shrink-0" />
+              <input
+                type="text"
+                value={chooseSearchQuery}
+                onChange={(e) => setChooseSearchQuery(e.target.value)}
+                placeholder="Search"
+                className="bg-transparent text-xs text-slate-800 placeholder-slate-400 focus:outline-none flex-1 font-normal"
+              />
+            </div>
+          </div>
+
+          {/* Grouped Friends List with Checkboxes */}
+          <div className="flex-1 overflow-y-auto pb-24">
+            {sortedChooseGroupKeys.map((letter) => {
+              const group = groupedChooseFriends[letter] || []
+              if (group.length === 0) return null
+
+              return (
+                <div key={letter} className="w-full">
+                  {/* Letter Section Header */}
+                  <div className="px-4 py-1 text-xs font-semibold text-slate-400">
+                    {letter}
+                  </div>
+
+                  {/* Friends in this group */}
+                  <div className="divide-y divide-slate-50">
+                    {group.map((user) => {
+                      const isSelected = selectedFriendIds.includes(user.id)
+                      const isMale = user.gender ? user.gender.toLowerCase() === 'male' : true
+                      const avatarUrl = normalizeImageUrl(user.profile_image)
+                      const displayId =
+                        user.id || user.user_uid?.replace(/[^0-9]/g, '') || user.user_uid
+
+                      return (
+                        <div
+                          key={user.id || user.user_uid}
+                          onClick={() => toggleSelectFriend(user.id)}
+                          className="px-4 py-2.5 flex items-center justify-between hover:bg-slate-50 cursor-pointer transition-colors"
+                        >
+                          {/* Left: Avatar + Details */}
+                          <div className="flex items-center gap-3 min-w-0 flex-1 mr-2">
+                            {/* Avatar */}
+                            <div className="w-11 h-11 rounded-full bg-[#f2f3f5] flex items-center justify-center shrink-0 overflow-hidden shadow-xs">
+                              {avatarUrl ? (
+                                <img
+                                  src={avatarUrl}
+                                  alt={user.name}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                <User className="w-6 h-6 text-[#b0b3b8] fill-[#b0b3b8]" />
+                              )}
+                            </div>
+
+                            {/* Name, Gender & Numeric ID */}
+                            <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+                              <span className="text-[14px] font-bold text-[#111827] truncate">
+                                {user.name || 'User'}
+                              </span>
+
+                              <div className="flex items-center gap-1.5">
+                                {/* Gender Badge */}
+                                <span
+                                  className={`w-3.5 h-3.5 rounded-full ${
+                                    isMale ? 'bg-[#0091ff]' : 'bg-[#ff4d88]'
+                                  } text-white text-[9px] font-bold flex items-center justify-center shrink-0`}
+                                >
+                                  {isMale ? '♂' : '♀'}
+                                </span>
+
+                                {/* Numeric ID */}
+                                <span className="text-[11.5px] text-slate-400 font-medium">
+                                  ID: {displayId}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Right: Circular Selection Radio */}
+                          <div
+                            className={`w-5 h-5 rounded-full flex items-center justify-center transition-colors shrink-0 ${
+                              isSelected
+                                ? 'bg-[#00dfb6] border-2 border-[#00dfb6]'
+                                : 'border-2 border-slate-300'
+                            }`}
+                          >
+                            {isSelected && <Check className="w-3.5 h-3.5 text-white stroke-[3]" />}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Bottom Sticky Footer Action Button matching Image 2 */}
+          <div className="fixed bottom-4 left-0 right-0 max-w-[471px] mx-auto px-4 z-10 pointer-events-auto">
+            <button
+              type="button"
+              disabled={selectedFriendIds.length === 0}
+              onClick={handleConfirmChooseFriends}
+              className={`w-full py-3 rounded-full font-bold text-sm transition-all duration-150 ${
+                selectedFriendIds.length > 0
+                  ? 'bg-[#00dfb6] text-[#06201a] active:scale-95 shadow-md cursor-pointer'
+                  : 'bg-[#f2f4f7] text-[#9da2ad] cursor-not-allowed'
+              }`}
+            >
+              Done ({selectedFriendIds.length})
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================ */}
+      {/* FULL-SCREEN CONVERSATION INTERFACE                            */}
       {/* ============================================================ */}
       {activeChat && (
         <div className="fixed inset-0 z-50 w-full max-w-[471px] mx-auto bg-[#0b141a] flex flex-col font-sans select-none animate-slide-up">
-          {/* 1. WhatsApp Top Bar */}
+          {/* 1. Top Bar */}
           <div className="px-3 py-2.5 bg-[#202c33] border-b border-[#2a3942] flex items-center justify-between text-white shadow-md">
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => setActiveChat(null)}
-                className="p-1 -ml-1 text-gray-300 hover:text-white transition-colors cursor-pointer"
+                className="p-1 -ml-1 text-slate-300 hover:text-white transition-colors cursor-pointer"
               >
-                <ArrowLeft className="w-6 h-6 stroke-[2]" />
+                <ArrowLeft className="w-5 h-5" />
               </button>
-
-              {/* Avatar + Online Status */}
-              <div className="relative w-10 h-10 rounded-full bg-[#111b21] flex items-center justify-center text-sm font-bold text-white overflow-hidden ring-1 ring-emerald-500/40">
+              <div className="w-9 h-9 rounded-full bg-slate-700 overflow-hidden shrink-0 flex items-center justify-center">
                 {activeChat.avatarImage ? (
                   <img
                     src={activeChat.avatarImage}
-                    alt=""
+                    alt={activeChat.name}
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <span>{activeChat.avatarInitial}</span>
+                  <span className="text-white text-xs font-bold">
+                    {activeChat.avatarInitial || 'U'}
+                  </span>
                 )}
-                <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-[#00a884] rounded-full border-2 border-[#202c33]" />
               </div>
-
-              {/* Name & Online Status */}
-              <div className="flex flex-col -space-y-0.5">
-                <span className="text-[15px] font-bold text-white leading-tight">
+              <div className="flex flex-col">
+                <span className="text-sm font-bold text-white truncate max-w-[150px]">
                   {activeChat.name}
                 </span>
-                <span className="text-[11px] text-[#00a884] font-medium">online</span>
+                <span className="text-[10px] text-teal-400 font-medium">online</span>
               </div>
             </div>
 
-            {/* WhatsApp Top Right Action Icons */}
-            <div className="flex items-center gap-4 text-gray-300">
+            <div className="flex items-center gap-3 text-slate-300">
               <button
                 type="button"
-                onClick={() => showToast(`Starting video call with ${activeChat.name}...`)}
-                className="hover:text-white transition-colors cursor-pointer"
-                title="Video call"
+                onClick={() => showToast('Starting video call...')}
+                className="hover:text-white p-1 cursor-pointer"
               >
-                <Video className="w-5 h-5 stroke-[2]" />
+                <Video className="w-4 h-4" />
               </button>
               <button
                 type="button"
-                onClick={() => showToast(`Calling ${activeChat.name}...`)}
-                className="hover:text-white transition-colors cursor-pointer"
-                title="Voice call"
+                onClick={() => showToast('Starting voice call...')}
+                className="hover:text-white p-1 cursor-pointer"
               >
-                <Phone className="w-4 h-4 stroke-[2]" />
+                <Phone className="w-4 h-4" />
               </button>
               <button
                 type="button"
-                onClick={() => showToast('Chat options')}
-                className="hover:text-white transition-colors cursor-pointer"
-                title="More"
+                onClick={() => showToast('Options')}
+                className="hover:text-white p-1 cursor-pointer"
               >
-                <MoreVertical className="w-5 h-5 stroke-[2]" />
+                <MoreVertical className="w-4 h-4" />
               </button>
             </div>
           </div>
 
-          {/* 2. WhatsApp Chat Body with Signature Wallpaper & Encryption Notice */}
-          <div
-            className="flex-1 p-3.5 overflow-y-auto space-y-2.5"
-            style={{
-              backgroundColor: '#0b141a',
-              backgroundImage: 'radial-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px)',
-              backgroundSize: '16px 16px',
-            }}
-          >
-            {/* End-to-End Encryption Banner */}
-            <div className="max-w-[85%] mx-auto my-2 p-2 rounded-lg bg-[#182229] border border-[#222d34] flex items-center gap-2 text-center text-[10.5px] text-[#ffd279]/90 shadow-xs">
-              <Lock className="w-3.5 h-3.5 text-[#ffd279] shrink-0" />
-              <span>
-                Messages and calls are end-to-end encrypted. No one outside of this chat can read or listen to them.
-              </span>
+          {/* 2. Messages Canvas */}
+          <div className="flex-1 p-3 overflow-y-auto space-y-2 bg-[#0b141a]">
+            <div className="w-full flex justify-center my-1">
+              <div className="bg-[#182229] border border-[#222e35] px-3 py-1 rounded-lg text-[10px] text-amber-200/80 flex items-center gap-1.5 shadow-xs">
+                <Lock className="w-3 h-3 text-amber-300 shrink-0" />
+                <span>Messages are end-to-end encrypted</span>
+              </div>
             </div>
 
-            {/* Centered Date Badge */}
-            <div className="flex justify-center my-1">
-              <span className="bg-[#182229] text-[10.5px] text-gray-400 font-semibold px-2.5 py-0.5 rounded-md shadow-xs uppercase tracking-wide">
+            <div className="w-full flex justify-center my-1">
+              <span className="bg-[#182229] text-slate-400 text-[10px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider">
                 Today
               </span>
             </div>
 
-            {/* Message Bubbles */}
             {messages.map((m, idx) => {
-              const isMe = m.sender === 'me'
+              const currentUserId = getStoredAuth()?.user?.id
+              const isMe =
+                (m.sender_id && Number(m.sender_id) === Number(currentUserId)) ||
+                m.sender_name === 'Me'
+              const text = m.content || ''
+              const time = m.created_at
+                ? new Date(m.created_at).toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })
+                : 'Now'
 
               return (
                 <div
-                  key={idx}
-                  className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
+                  key={m.id || idx}
+                  className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} my-0.5`}
                 >
                   <div
-                    className={`relative max-w-[80%] px-3 py-1.5 rounded-2xl text-[13px] leading-relaxed shadow-sm break-words ${
+                    className={`max-w-[78%] px-3 py-2 rounded-xl text-xs shadow-md break-words leading-relaxed ${
                       isMe
                         ? 'bg-[#005c4b] text-white rounded-tr-none'
-                        : 'bg-[#202c33] text-gray-100 rounded-tl-none'
+                        : 'bg-[#202c33] text-slate-100 rounded-tl-none'
                     }`}
                   >
-                    {m.isVoice ? (
-                      <div className="flex items-center gap-2 py-0.5">
-                        <span className="w-6 h-6 rounded-full bg-[#00a884] flex items-center justify-center text-xs">
-                          ▶
-                        </span>
-                        <div className="flex items-center gap-0.5 h-3">
-                          <span className="w-0.5 h-2 bg-white/70 rounded-full animate-pulse" />
-                          <span className="w-0.5 h-4 bg-white rounded-full animate-pulse" />
-                          <span className="w-0.5 h-1.5 bg-white/70 rounded-full animate-pulse" />
-                          <span className="w-0.5 h-3 bg-white rounded-full animate-pulse" />
-                        </div>
-                        <span className="text-xs font-mono text-gray-200">0:04</span>
-                      </div>
-                    ) : (
-                      <span>{m.text}</span>
-                    )}
-
-                    {/* WhatsApp Timestamp & Blue Double Checkmarks */}
-                    <div className="flex items-center justify-end gap-1 mt-0.5 -mb-0.5 float-right ml-2 text-[9.5px] text-gray-300">
-                      <span>{m.time}</span>
-                      {isMe && (
-                        <svg
-                          className="w-3.5 h-2.5 text-[#53bdeb] fill-current"
-                          viewBox="0 0 16 11"
-                        >
-                          <path d="M11.5 0.5L6 6 4.5 4.5 3 6l3 3 7-7-1.5-1.5zm3 0L8.5 6.5 9.5 7.5 16 1 14.5.5zM1.5 6L0 7.5 4.5 12 6 10.5 1.5 6z" />
-                        </svg>
-                      )}
+                    <p>{text}</p>
+                    <div
+                      className={`flex items-center justify-end gap-1 mt-1 text-[9px] ${
+                        isMe ? 'text-[#8696a0]' : 'text-slate-400'
+                      }`}
+                    >
+                      <span>{time}</span>
+                      {isMe && <span className="text-[#53bdeb] font-bold">✓✓</span>}
                     </div>
                   </div>
                 </div>
@@ -553,80 +1077,64 @@ export const MessagesPage: React.FC = () => {
             })}
           </div>
 
-          {/* 3. WhatsApp Input Footer */}
-          <form
-            onSubmit={handleSendMessage}
-            className="p-2 bg-[#202c33] border-t border-[#2a3942] flex items-center gap-2"
-          >
-            <div className="flex-1 bg-[#2a3942] rounded-full px-3 py-1.5 flex items-center gap-2 shadow-inner">
-              {/* Emoji Button */}
+          {/* 3. Input Footer */}
+          <div className="px-2.5 py-2 bg-[#202c33] border-t border-[#2a3942] flex items-center gap-2">
+            <div className="flex-1 bg-[#2a3942] rounded-full px-3 py-1.5 flex items-center gap-2 text-slate-300">
               <button
                 type="button"
                 onClick={() => setChatInput((prev) => prev + ' 😊')}
-                className="text-gray-400 hover:text-white transition-colors cursor-pointer"
+                className="hover:text-white"
               >
-                <Smile className="w-5 h-5" />
+                <Smile className="w-4 h-4" />
               </button>
-
-              {/* Text Input */}
               <input
                 type="text"
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
                 placeholder="Message"
-                className="flex-1 bg-transparent text-[14px] text-white placeholder-gray-400 focus:outline-none"
+                className="bg-transparent text-xs text-white placeholder-slate-400 focus:outline-none flex-1"
               />
-
-              {/* Attachment Icon */}
               <button
                 type="button"
-                onClick={() => showToast('Attachment: photos, files, contacts')}
-                className="text-gray-400 hover:text-white transition-colors cursor-pointer"
+                onClick={() => showToast('Attachment options')}
+                className="hover:text-white"
               >
                 <Paperclip className="w-4 h-4" />
               </button>
-
-              {/* Camera Icon */}
               <button
                 type="button"
-                onClick={() => showToast('Opening camera...')}
-                className="text-gray-400 hover:text-white transition-colors cursor-pointer"
+                onClick={() => showToast('Camera')}
+                className="hover:text-white"
               >
                 <Camera className="w-4 h-4" />
               </button>
             </div>
 
-            {/* Send or Mic Audio Note Button */}
-            {chatInput.trim() ? (
-              <button
-                type="submit"
-                className="w-10 h-10 rounded-full bg-[#00a884] hover:bg-[#008f6f] active:scale-95 text-white flex items-center justify-center transition-all cursor-pointer shadow-md"
-              >
-                <Send className="w-4 h-4" />
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={handleSendVoiceNote}
-                className="w-10 h-10 rounded-full bg-[#00a884] hover:bg-[#008f6f] active:scale-95 text-white flex items-center justify-center transition-all cursor-pointer shadow-md"
-                title="Send voice note"
-              >
-                <Mic className="w-5 h-5" />
-              </button>
-            )}
-          </form>
+            <button
+              type="button"
+              onClick={handleSendMessage}
+              className="w-9 h-9 rounded-full bg-[#00a884] hover:bg-[#008f70] active:scale-95 text-[#0b141a] flex items-center justify-center shrink-0 shadow-md cursor-pointer transition-transform"
+            >
+              {chatInput.trim() ? (
+                <Send className="w-4 h-4 text-[#0b141a] translate-x-0.5" />
+              ) : (
+                <Mic className="w-4 h-4 text-[#0b141a]" />
+              )}
+            </button>
+          </div>
         </div>
       )}
 
       {/* ============================================================ */}
-      {/* FOLLOW & FRIEND REQUESTS MODAL (ACTIVE FROM USERPLUS BUTTON)  */}
+      {/* FRIEND & FOLLOW REQUESTS MODAL                                */}
       {/* ============================================================ */}
       {isRequestsModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4">
-          <div className="bg-[#0b2822] border border-emerald-600/40 rounded-3xl w-full max-w-[390px] p-5 shadow-2xl animate-scale-up space-y-4">
+          <div className="bg-[#0b2822] border border-emerald-600/40 rounded-3xl w-full max-w-[360px] p-5 shadow-2xl animate-scale-up space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-emerald-800/50">
-              <div className="flex items-center gap-2">
-                <UserCheck className="w-5 h-5 text-teal-400" />
+              <div className="flex items-center gap-2 text-teal-400">
+                <UserPlus className="w-5 h-5" />
                 <h3 className="font-extrabold text-base text-white">Friend & Follow Requests</h3>
               </div>
               <button
@@ -719,49 +1227,6 @@ export const MessagesPage: React.FC = () => {
                   </div>
                 ))}
               </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ============================================================ */}
-      {/* START NEW CHAT MODAL                                         */}
-      {/* ============================================================ */}
-      {isNewChatModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4">
-          <div className="bg-[#0b2822] border border-emerald-600/40 rounded-3xl w-full max-w-[360px] p-5 shadow-2xl animate-scale-up space-y-3">
-            <div className="flex items-center justify-between pb-2 border-b border-emerald-800/50">
-              <h3 className="font-extrabold text-base text-white">Start New Chat</h3>
-              <button
-                type="button"
-                onClick={() => setIsNewChatModalOpen(false)}
-                className="text-slate-400 hover:text-white p-1"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <p className="text-xs text-slate-400">Select a player from the database to start messaging:</p>
-
-            <div className="max-h-56 overflow-y-auto space-y-1.5 no-scrollbar">
-              {threads
-                .filter((t) => !t.isSystem)
-                .map((t) => (
-                  <div
-                    key={t.id}
-                    onClick={() => {
-                      setActiveChat(t)
-                      setIsNewChatModalOpen(false)
-                      setMessages([])
-                    }}
-                    className="p-2.5 rounded-2xl bg-[#082620] hover:bg-[#0c332b] flex items-center gap-2.5 cursor-pointer transition-colors"
-                  >
-                    <div className="w-8 h-8 rounded-full bg-teal-900 flex items-center justify-center text-xs font-bold text-white">
-                      {t.avatarInitial}
-                    </div>
-                    <span className="text-xs font-bold text-white truncate">{t.name}</span>
-                  </div>
-                ))}
             </div>
           </div>
         </div>

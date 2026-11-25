@@ -12,7 +12,9 @@ export const AUTH_BASE_URL = `${API_BASE_ROOT}/api/signuproute`
 export const REPORT_BASE_URL = `${API_BASE_ROOT}/api/report/report`
 export const FOLLOW_BASE_URL = `${API_BASE_ROOT}/api/follow`
 export const BLOCK_BASE_URL = `${API_BASE_ROOT}/api/blockroute`
-// export const BANNER_BASE_URL = `${API_BASE_ROOT}/api/banner`
+export const CHAT_BASE_URL = `${API_BASE_ROOT}/api/chatroute`
+export const MOMENT_BASE_URL = `${API_BASE_ROOT}/api/momentroute`
+export const BANNER_BASE_URL = `${API_BASE_ROOT}/api/banner`
 
 export function normalizeImageUrl(url) {
   if (!url || typeof url !== 'string') return null
@@ -527,10 +529,328 @@ export async function viewBlockedCount(token) {
 }
 
 /* ============================================================================
- * 5. PROMO BANNER SYSTEM (COMMENTED OUT AS REQUESTED)
+ * 5. PRIVATE CHAT SYSTEM (/api/chatroute)
  * ============================================================================ */
 
-/*
+/**
+ * Get user's inbox (all conversations)
+ * GET /api/chatroute/inbox
+ */
+export async function viewInbox(token) {
+  const res = await fetch(`${CHAT_BASE_URL}/inbox`, {
+    method: 'GET',
+    headers: { ...authHeader(token) },
+  })
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(data.message || `Failed to fetch inbox (${res.status})`)
+  }
+  return data
+}
+
+/**
+ * Start or get 1-on-1 chat room with another player
+ * POST /api/chatroute/start/:receiverId
+ */
+export async function startOrGetChat(receiverId, token) {
+  const res = await fetch(`${CHAT_BASE_URL}/start/${receiverId}`, {
+    method: 'POST',
+    headers: { ...authHeader(token) },
+  })
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(data.message || `Failed to start chat (${res.status})`)
+  }
+  return data
+}
+
+/**
+ * Send a chat message (text, voice, image, video, file, sticker)
+ * POST /api/chatroute/:chatId/send
+ */
+export async function sendChatMessage(chatId, payload, token) {
+  const isFormData = payload instanceof FormData
+  const headers = { ...authHeader(token) }
+  if (!isFormData) headers['Content-Type'] = 'application/json'
+
+  const res = await fetch(`${CHAT_BASE_URL}/${chatId}/send`, {
+    method: 'POST',
+    headers,
+    body: isFormData ? payload : JSON.stringify(payload),
+  })
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(data.message || `Failed to send message (${res.status})`)
+  }
+  return data
+}
+
+/**
+ * Get chat history by chat ID (paginated)
+ * GET /api/chatroute/:chatId/messages?limit=50&offset=0
+ */
+export async function viewChatHistory(chatId, token, limit = 50, offset = 0) {
+  const res = await fetch(`${CHAT_BASE_URL}/${chatId}/messages?limit=${limit}&offset=${offset}`, {
+    method: 'GET',
+    headers: { ...authHeader(token) },
+  })
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(data.message || `Failed to fetch chat history (${res.status})`)
+  }
+  return data
+}
+
+/**
+ * Mark messages in a chat as read
+ * PUT /api/chatroute/:chatId/read
+ */
+export async function markChatAsRead(chatId, token) {
+  const res = await fetch(`${CHAT_BASE_URL}/${chatId}/read`, {
+    method: 'PUT',
+    headers: { ...authHeader(token) },
+  })
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(data.message || `Failed to mark read (${res.status})`)
+  }
+  return data
+}
+
+/**
+ * React or unreact to a message with an emoji
+ * PUT /api/chatroute/message/:messageId/react
+ */
+export async function reactToChatMessage(messageId, emoji, token) {
+  const res = await fetch(`${CHAT_BASE_URL}/message/${messageId}/react`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeader(token),
+    },
+    body: JSON.stringify({ emoji }),
+  })
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(data.message || `Failed to react to message (${res.status})`)
+  }
+  return data
+}
+
+/**
+ * Edit a text message (sender only)
+ * PUT /api/chatroute/message/:messageId/edit
+ */
+export async function editChatMessage(messageId, content, token) {
+  const res = await fetch(`${CHAT_BASE_URL}/message/${messageId}/edit`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeader(token),
+    },
+    body: JSON.stringify({ content }),
+  })
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(data.message || `Failed to edit message (${res.status})`)
+  }
+  return data
+}
+
+/**
+ * Delete a message ("for me" or "for everyone")
+ * DELETE /api/chatroute/message/:messageId?forEveryone=true
+ */
+export async function removeChatMessage(messageId, token, forEveryone = true) {
+  const res = await fetch(`${CHAT_BASE_URL}/message/${messageId}?forEveryone=${Boolean(forEveryone)}`, {
+    method: 'DELETE',
+    headers: { ...authHeader(token) },
+  })
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(data.message || `Failed to delete message (${res.status})`)
+  }
+  return data
+}
+
+/**
+ * Toggle pin / unpin message in chat
+ * PUT /api/chatroute/message/:messageId/pin
+ */
+export async function pinChatMessage(messageId, token) {
+  const res = await fetch(`${CHAT_BASE_URL}/message/${messageId}/pin`, {
+    method: 'PUT',
+    headers: { ...authHeader(token) },
+  })
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(data.message || `Failed to pin message (${res.status})`)
+  }
+  return data
+}
+
+/**
+ * Search messages in a chat
+ * GET /api/chatroute/:chatId/search?q=keyword
+ */
+export async function searchMessagesInChat(chatId, query, token) {
+  const res = await fetch(`${CHAT_BASE_URL}/${chatId}/search?q=${encodeURIComponent(query)}`, {
+    method: 'GET',
+    headers: { ...authHeader(token) },
+  })
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(data.message || `Failed to search messages (${res.status})`)
+  }
+  return data
+}
+
+/* ============================================================================
+ * 6. MOMENTS SYSTEM (/api/momentroute)
+ * ============================================================================ */
+
+/**
+ * Post a new moment (image file + caption)
+ * POST /api/momentroute/moments
+ */
+export async function postMoment(formData, token) {
+  const res = await fetch(`${MOMENT_BASE_URL}/moments`, {
+    method: 'POST',
+    headers: { ...authHeader(token) },
+    body: formData,
+  })
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(data.message || `Failed to post moment (${res.status})`)
+  }
+  return data
+}
+
+/**
+ * Get all moments feed (with reactions & user info)
+ * GET /api/momentroute/moments?limit=20&offset=0
+ */
+export async function viewAllMoments(token, limit = 20, offset = 0) {
+  const res = await fetch(`${MOMENT_BASE_URL}/moments?limit=${limit}&offset=${offset}`, {
+    method: 'GET',
+    headers: { ...authHeader(token) },
+  })
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(data.message || `Failed to fetch moments (${res.status})`)
+  }
+  return data
+}
+
+/**
+ * Get moments of a specific user
+ * GET /api/momentroute/moments/user/:userId
+ */
+export async function viewUserMoments(userId, token) {
+  const res = await fetch(`${MOMENT_BASE_URL}/moments/user/${userId}`, {
+    method: 'GET',
+    headers: { ...authHeader(token) },
+  })
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(data.message || `Failed to fetch user moments (${res.status})`)
+  }
+  return data
+}
+
+/**
+ * Get single moment by ID
+ * GET /api/momentroute/moments/:momentId
+ */
+export async function viewMomentById(momentId, token) {
+  const res = await fetch(`${MOMENT_BASE_URL}/moments/${momentId}`, {
+    method: 'GET',
+    headers: { ...authHeader(token) },
+  })
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(data.message || `Failed to fetch moment (${res.status})`)
+  }
+  return data
+}
+
+/**
+ * React to a moment (like, love, haha, wow, fire, sad)
+ * POST /api/momentroute/moments/:momentId/react
+ */
+export async function reactToMoment(momentId, reactionType, token) {
+  const res = await fetch(`${MOMENT_BASE_URL}/moments/${momentId}/react`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeader(token),
+    },
+    body: JSON.stringify({ reaction_type: reactionType }),
+  })
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(data.message || `Failed to react to moment (${res.status})`)
+  }
+  return data
+}
+
+/**
+ * View all reactions on a moment
+ * GET /api/momentroute/moments/:momentId/reactions
+ */
+export async function viewMomentReactions(momentId, token) {
+  const res = await fetch(`${MOMENT_BASE_URL}/moments/${momentId}/reactions`, {
+    method: 'GET',
+    headers: { ...authHeader(token) },
+  })
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(data.message || `Failed to fetch reactions (${res.status})`)
+  }
+  return data
+}
+
+/**
+ * Delete a moment (owner or admin)
+ * DELETE /api/momentroute/moments/:momentId
+ */
+export async function removeMoment(momentId, token) {
+  const res = await fetch(`${MOMENT_BASE_URL}/moments/${momentId}`, {
+    method: 'DELETE',
+    headers: { ...authHeader(token) },
+  })
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(data.message || `Failed to delete moment (${res.status})`)
+  }
+  return data
+}
+
+/* ============================================================================
+ * 7. PROMO BANNER SYSTEM (/api/banner)
+ * ============================================================================ */
+
+/**
+ * Get active promotional banners
+ * GET /api/banner
+ */
 export async function getActiveBanners(token) {
   const res = await fetch(`${BANNER_BASE_URL}`, {
     method: 'GET',
@@ -543,4 +863,3 @@ export async function getActiveBanners(token) {
   }
   return data
 }
-*/

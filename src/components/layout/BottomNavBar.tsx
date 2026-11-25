@@ -48,9 +48,17 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
     },
   ]
 
+  const isWhiteNav = currentTab === 'messages'
+
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 flex justify-center pointer-events-auto">
-      <div className="w-full max-w-[471px] bg-[#0c2420]/95 backdrop-blur-md border-t border-emerald-900/40 px-2 py-2 flex items-center justify-around shadow-2xl">
+      <div
+        className={`w-full max-w-[471px] ${
+          isWhiteNav
+            ? 'bg-white border-t border-slate-100 shadow-[0_-4px_16px_rgba(0,0,0,0.05)]'
+            : 'bg-[#0c2420]/95 backdrop-blur-md border-t border-emerald-900/40 shadow-2xl'
+        } px-2 py-2 flex items-center justify-around`}
+      >
         {tabs.map((tab) => {
           const isActive = currentTab === tab.id
           const { Icon } = tab
@@ -62,7 +70,9 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
               onClick={() => onTabChange(tab.id)}
               className={`relative flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all duration-150 cursor-pointer select-none ${
                 isActive
-                  ? 'text-teal-400 font-bold'
+                  ? 'text-[#00dfb6] font-bold'
+                  : isWhiteNav
+                  ? 'text-slate-400 hover:text-slate-600'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
@@ -76,19 +86,27 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
 
                 {/* Unread Message Notification Badge */}
                 {Boolean(tab.badge && tab.badge > 0) && (
-                  <span className="absolute -top-1 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-rose-500 text-white font-extrabold text-[10px] flex items-center justify-center shadow-md animate-pulse">
+                  <span className="absolute -top-1 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-[#ff3b30] text-white font-extrabold text-[10px] flex items-center justify-center shadow-md animate-pulse">
                     {tab.badge}
                   </span>
                 )}
               </div>
 
-              <span className={`text-[11px] mt-1 tracking-tight ${isActive ? 'text-teal-400' : 'text-slate-400'}`}>
+              <span
+                className={`text-[11px] mt-1 tracking-tight ${
+                  isActive
+                    ? 'text-[#00dfb6] font-bold'
+                    : isWhiteNav
+                    ? 'text-slate-400'
+                    : 'text-slate-400'
+                }`}
+              >
                 {tab.label}
               </span>
 
               {/* Active Tab Indicator Pip */}
               {isActive && (
-                <div className="w-1 h-1 rounded-full bg-teal-400 mt-0.5" />
+                <div className="w-1 h-1 rounded-full bg-[#00dfb6] mt-0.5" />
               )}
             </button>
           )
