@@ -62,7 +62,7 @@ export default function DeviceSimulator({ children }) {
       clearTimeout(timer)
       window.removeEventListener('resize', handleResize)
     }
-  }, [customWidth, customHeight])
+  }, [])
 
   // Current active preset metadata
   const activePreset = DEVICE_PRESETS.find((p) => p.id === selectedPresetId)
