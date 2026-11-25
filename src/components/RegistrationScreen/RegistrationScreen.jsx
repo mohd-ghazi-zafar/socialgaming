@@ -19,7 +19,7 @@ export default function RegistrationScreen({ onBack, onComplete }) {
   const [step, setStep] = useState('profile')
 
   // Step 1: Profile fields
-  const [nickname, setNickname] = useState('Kashif sarwar')
+  const [nickname, setNickname] = useState('Enter Your Name')
   const [gender, setGender] = useState('male') // 'male' | 'female'
   const [birthYear, setBirthYear] = useState('2000')
   const [avatarPreview, setAvatarPreview] = useState(null)
