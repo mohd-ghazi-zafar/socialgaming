@@ -45,14 +45,24 @@ export default function DeviceSimulator({ children }) {
 
   const stageRef = useRef(null)
 
-  // Track window resize to detect mobile screen changes
+  // Track window resize and auto-fit on mount so the device is never clipped
   useEffect(() => {
     const handleResize = () => {
       setIsMobileScreen(window.innerWidth <= 820)
+      handleAutoFit()
     }
+
+    // Auto-fit immediately after render
+    const timer = setTimeout(() => {
+      handleAutoFit()
+    }, 150)
+
     window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
-  }, [])
+    return () => {
+      clearTimeout(timer)
+      window.removeEventListener('resize', handleResize)
+    }
+  }, [customWidth, customHeight])
 
   // Current active preset metadata
   const activePreset = DEVICE_PRESETS.find((p) => p.id === selectedPresetId)
@@ -114,8 +124,9 @@ export default function DeviceSimulator({ children }) {
   // Auto-fit function
   const handleAutoFit = () => {
     if (!stageRef.current) return
-    const stageWidth = stageRef.current.clientWidth - 80
-    const stageHeight = stageRef.current.clientHeight - 80
+    const stageWidth = stageRef.current.clientWidth - 40
+    const stageHeight = stageRef.current.clientHeight - 40
+    if (stageWidth <= 0 || stageHeight <= 0) return
     const framePadding = hasBezel ? 30 : 0
     const totalTargetW = screenWidth + framePadding
     const totalTargetH = screenHeight + framePadding
@@ -123,7 +134,9 @@ export default function DeviceSimulator({ children }) {
     const scaleX = stageWidth / totalTargetW
     const scaleY = stageHeight / totalTargetH
     const optimalScale = Math.min(scaleX, scaleY, 1.0)
-    setScale(Math.round(optimalScale * 20) / 20)
+    if (optimalScale > 0.2) {
+      setScale(Math.max(0.4, Math.round(optimalScale * 20) / 20))
+    }
   }
 
   // Zoom handlers

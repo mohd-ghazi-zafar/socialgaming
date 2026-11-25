@@ -4,8 +4,6 @@ import {
   UserPlus,
   Send,
   Plus,
-  Phone,
-  Video,
   MoreVertical,
   Paperclip,
   Smile,
@@ -15,6 +13,7 @@ import {
   ArrowLeft,
   ChevronLeft,
   Camera,
+  Image as ImageIcon,
   Lock,
   Bell,
   User,
@@ -962,21 +961,24 @@ export const MessagesPage: React.FC = () => {
       )}
 
       {/* ============================================================ */}
-      {/* FULL-SCREEN CONVERSATION INTERFACE                            */}
+      {/* SNAPCHAT-STYLE FULL-SCREEN CONVERSATION INTERFACE            */}
       {/* ============================================================ */}
       {activeChat && (
-        <div className="fixed inset-0 z-50 w-full max-w-[471px] mx-auto bg-[#0b141a] flex flex-col font-sans select-none animate-slide-up">
-          {/* 1. Top Bar */}
-          <div className="px-3 py-2.5 bg-[#202c33] border-b border-[#2a3942] flex items-center justify-between text-white shadow-md">
-            <div className="flex items-center gap-2">
+        <div className="fixed inset-0 z-[70] w-full max-w-[471px] mx-auto bg-white flex flex-col font-sans select-none animate-slide-up h-full overflow-hidden">
+          {/* 1. Snapchat Header: No calling/video buttons */}
+          <div className="px-3.5 py-3 bg-white border-b border-slate-100 flex items-center justify-between text-slate-900 shadow-xs z-10 shrink-0">
+            <div className="flex items-center gap-2.5 min-w-0">
               <button
                 type="button"
                 onClick={() => setActiveChat(null)}
-                className="p-1 -ml-1 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                className="p-1 -ml-1 text-slate-700 hover:text-black transition-colors cursor-pointer"
+                title="Back"
               >
-                <ArrowLeft className="w-5 h-5" />
+                <ChevronLeft className="w-6 h-6 stroke-[2.5]" />
               </button>
-              <div className="w-9 h-9 rounded-full bg-slate-700 overflow-hidden shrink-0 flex items-center justify-center">
+
+              {/* Bitmoji / Avatar with status ring */}
+              <div className="relative w-10 h-10 rounded-full bg-[#f2f4f7] ring-2 ring-[#0099ff]/20 flex items-center justify-center shrink-0 overflow-hidden shadow-xs">
                 {activeChat.avatarImage ? (
                   <img
                     src={activeChat.avatarImage}
@@ -984,59 +986,58 @@ export const MessagesPage: React.FC = () => {
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <span className="text-white text-xs font-bold">
+                  <span className="text-slate-800 text-xs font-black">
                     {activeChat.avatarInitial || 'U'}
                   </span>
                 )}
+                {/* Active status dot */}
+                <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-[#00dfb6] ring-2 ring-white" />
               </div>
-              <div className="flex flex-col">
-                <span className="text-sm font-bold text-white truncate max-w-[150px]">
+
+              {/* Identity & Friendship Status */}
+              <div className="flex flex-col min-w-0">
+                <span className="text-[15px] font-extrabold text-slate-900 truncate max-w-[190px] leading-tight">
                   {activeChat.name}
                 </span>
-                <span className="text-[10px] text-teal-400 font-medium">online</span>
+                <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400">
+                  <span className="text-amber-500 font-bold">🔥 14</span>
+                  <span className="text-slate-300">•</span>
+                  <span className="text-slate-400">Tap for Friendship</span>
+                </div>
               </div>
             </div>
 
-            <div className="flex items-center gap-3 text-slate-300">
+            {/* Right: Only options menu (NO calling, NO video) */}
+            <div className="flex items-center gap-2 text-slate-400">
               <button
                 type="button"
-                onClick={() => showToast('Starting video call...')}
-                className="hover:text-white p-1 cursor-pointer"
+                onClick={() => showToast('Friendship details & options')}
+                className="hover:text-slate-700 p-1.5 rounded-full hover:bg-slate-50 transition-colors cursor-pointer"
+                title="Options"
               >
-                <Video className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => showToast('Starting voice call...')}
-                className="hover:text-white p-1 cursor-pointer"
-              >
-                <Phone className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => showToast('Options')}
-                className="hover:text-white p-1 cursor-pointer"
-              >
-                <MoreVertical className="w-4 h-4" />
+                <MoreVertical className="w-5 h-5 stroke-[2]" />
               </button>
             </div>
           </div>
 
-          {/* 2. Messages Canvas */}
-          <div className="flex-1 p-3 overflow-y-auto space-y-2 bg-[#0b141a]">
+          {/* 2. Snapchat Messages Canvas */}
+          <div className="flex-1 min-h-0 p-3.5 overflow-y-auto space-y-3 bg-white overscroll-contain">
+            {/* Encryption notice */}
             <div className="w-full flex justify-center my-1">
-              <div className="bg-[#182229] border border-[#222e35] px-3 py-1 rounded-lg text-[10px] text-amber-200/80 flex items-center gap-1.5 shadow-xs">
-                <Lock className="w-3 h-3 text-amber-300 shrink-0" />
-                <span>Messages are end-to-end encrypted</span>
+              <div className="bg-[#f8f9fa] border border-slate-100 px-3 py-1 rounded-full text-[10px] text-slate-500 font-medium flex items-center gap-1.5 shadow-2xs">
+                <Lock className="w-3 h-3 text-slate-400 shrink-0" />
+                <span>End-to-end encrypted chat</span>
               </div>
             </div>
 
-            <div className="w-full flex justify-center my-1">
-              <span className="bg-[#182229] text-slate-400 text-[10px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider">
+            {/* Date divider */}
+            <div className="w-full flex justify-center my-1.5">
+              <span className="bg-slate-100 text-slate-500 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-widest">
                 Today
               </span>
             </div>
 
+            {/* Chat Messages */}
             {messages.map((m, idx) => {
               const currentUserId = getStoredAuth()?.user?.id
               const isMe =
@@ -1053,75 +1054,113 @@ export const MessagesPage: React.FC = () => {
               return (
                 <div
                   key={m.id || idx}
-                  className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} my-0.5`}
+                  className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} my-1`}
                 >
+                  {/* Sender Name tag in Snapchat signature colors */}
+                  <span
+                    className={`text-[10px] font-black uppercase tracking-wider mb-0.5 ${
+                      isMe ? 'text-[#0099ff] pr-1.5' : 'text-[#ff2a6d] pl-1.5'
+                    }`}
+                  >
+                    {isMe ? 'ME' : activeChat.name}
+                  </span>
+
+                  {/* Message Bubble */}
                   <div
-                    className={`max-w-[78%] px-3 py-2 rounded-xl text-xs shadow-md break-words leading-relaxed ${
+                    className={`max-w-[82%] px-3.5 py-2.5 rounded-2xl text-[13.5px] leading-relaxed shadow-xs break-words ${
                       isMe
-                        ? 'bg-[#005c4b] text-white rounded-tr-none'
-                        : 'bg-[#202c33] text-slate-100 rounded-tl-none'
+                        ? 'bg-[#0099ff] text-white rounded-tr-xs font-normal'
+                        : 'bg-[#f2f3f5] text-slate-900 rounded-tl-xs font-normal'
                     }`}
                   >
                     <p>{text}</p>
-                    <div
-                      className={`flex items-center justify-end gap-1 mt-1 text-[9px] ${
-                        isMe ? 'text-[#8696a0]' : 'text-slate-400'
-                      }`}
-                    >
-                      <span>{time}</span>
-                      {isMe && <span className="text-[#53bdeb] font-bold">✓✓</span>}
-                    </div>
+                  </div>
+
+                  {/* Snapchat-style status indicator */}
+                  <div
+                    className={`flex items-center gap-1 text-[10px] text-slate-400 mt-1 font-medium ${
+                      isMe ? 'pr-1' : 'pl-1'
+                    }`}
+                  >
+                    {isMe ? (
+                      <>
+                        <span className="text-[#0099ff] text-[9px] font-black">▶</span>
+                        <span>Delivered</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-slate-400 text-[9px] font-black">▷</span>
+                        <span>Opened</span>
+                      </>
+                    )}
+                    <span className="text-slate-300">•</span>
+                    <span>{time}</span>
                   </div>
                 </div>
               )
             })}
           </div>
 
-          {/* 3. Input Footer */}
-          <div className="px-2.5 py-2 bg-[#202c33] border-t border-[#2a3942] flex items-center gap-2">
-            <div className="flex-1 bg-[#2a3942] rounded-full px-3 py-1.5 flex items-center gap-2 text-slate-300">
-              <button
-                type="button"
-                onClick={() => setChatInput((prev) => prev + ' 😊')}
-                className="hover:text-white"
-              >
-                <Smile className="w-4 h-4" />
-              </button>
+          {/* 3. Snapchat Signature Input Footer - Always visible and pinned to bottom */}
+          <div className="px-3 py-2.5 bg-white border-t border-slate-100 flex items-center gap-2 z-20 shrink-0 sticky bottom-0 shadow-[0_-2px_12px_rgba(0,0,0,0.04)]">
+            {/* Snapchat Iconic Round Camera Button */}
+            <button
+              type="button"
+              onClick={() => showToast('Snap camera opened')}
+              className="w-10 h-10 rounded-full bg-[#f2f3f5] hover:bg-[#e8eaed] active:scale-95 text-slate-800 flex items-center justify-center shrink-0 cursor-pointer shadow-2xs transition-all"
+              title="Camera"
+            >
+              <Camera className="w-5 h-5 stroke-[2] text-slate-800" />
+            </button>
+
+            {/* "Send a chat" Pill Container */}
+            <div className="flex-1 bg-[#f2f3f5] rounded-full px-4 py-2 flex items-center gap-2 border border-transparent focus-within:border-slate-200 focus-within:bg-white transition-all">
               <input
                 type="text"
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                placeholder="Message"
-                className="bg-transparent text-xs text-white placeholder-slate-400 focus:outline-none flex-1"
+                placeholder="Send a chat"
+                className="bg-transparent text-[13px] text-slate-900 placeholder-slate-400 focus:outline-none flex-1 font-normal"
               />
               <button
                 type="button"
-                onClick={() => showToast('Attachment options')}
-                className="hover:text-white"
+                onClick={() => setChatInput((prev) => prev + ' 😊')}
+                className="text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
+                title="Emoji"
               >
-                <Paperclip className="w-4 h-4" />
+                <Smile className="w-4 h-4" />
               </button>
               <button
                 type="button"
-                onClick={() => showToast('Camera')}
-                className="hover:text-white"
+                onClick={() => showToast('Photo gallery opened')}
+                className="text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
+                title="Photos"
               >
-                <Camera className="w-4 h-4" />
+                <ImageIcon className="w-4 h-4" />
               </button>
             </div>
 
-            <button
-              type="button"
-              onClick={handleSendMessage}
-              className="w-9 h-9 rounded-full bg-[#00a884] hover:bg-[#008f70] active:scale-95 text-[#0b141a] flex items-center justify-center shrink-0 shadow-md cursor-pointer transition-transform"
-            >
-              {chatInput.trim() ? (
-                <Send className="w-4 h-4 text-[#0b141a] translate-x-0.5" />
-              ) : (
-                <Mic className="w-4 h-4 text-[#0b141a]" />
-              )}
-            </button>
+            {/* Action Button: Snapchat Electric Blue Send OR Voice Mic */}
+            {chatInput.trim() ? (
+              <button
+                type="button"
+                onClick={handleSendMessage}
+                className="w-10 h-10 rounded-full bg-[#0099ff] hover:bg-[#0088ee] active:scale-95 text-white flex items-center justify-center shrink-0 shadow-md cursor-pointer transition-all"
+                title="Send"
+              >
+                <Send className="w-4 h-4 text-white translate-x-0.5" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => showToast('Hold to record voice snap')}
+                className="w-10 h-10 rounded-full bg-[#f2f3f5] hover:bg-[#e8eaed] active:scale-95 text-slate-800 flex items-center justify-center shrink-0 cursor-pointer shadow-2xs transition-all"
+                title="Voice Snap"
+              >
+                <Mic className="w-4 h-4 text-slate-800" />
+              </button>
+            )}
           </div>
         </div>
       )}
