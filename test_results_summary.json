@@ -4,12 +4,12 @@
     "method": "POST",
     "path": "/api/signuproute/auth/social",
     "status": 200,
-    "duration_ms": 284,
+    "duration_ms": 276,
     "success": true,
     "data": {
       "message": "Logged in with google successfully",
       "unique_id": "G-515305-2026",
-      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MjEsInVzZXJfdWlkIjoiRy01MTUzMDUtMjAyNiIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzk1NjA4ODY0fQ.lXhjFHlBWCgsns_a1YI8Ob3EXhfpMNbM-pBmQfnwXEg",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MjEsInVzZXJfdWlkIjoiRy01MTUzMDUtMjAyNiIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzk1NjEzMjQxfQ.jElxq5vnj5iDe4F3MHMenWHE1xvCnGxwsyIl8gfDM2g",
       "user": {
         "id": 21,
         "user_uid": "G-515305-2026",
@@ -31,12 +31,12 @@
     "method": "POST",
     "path": "/api/signuproute/auth/social",
     "status": 200,
-    "duration_ms": 138,
+    "duration_ms": 127,
     "success": true,
     "data": {
       "message": "Logged in with apple successfully",
       "unique_id": "G-616994-2026",
-      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MjIsInVzZXJfdWlkIjoiRy02MTY5OTQtMjAyNiIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzk1NjA4ODY1fQ.bvR0NWqfL68WmFbTT-Es9JbqS5Po8B9VNnipmhRMc8s",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MjIsInVzZXJfdWlkIjoiRy02MTY5OTQtMjAyNiIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzk1NjEzMjQxfQ.XerWlKn0U6H8xgkGkBhHBe0ttYn9YXoV9s0AZ5G614Y",
       "user": {
         "id": 22,
         "user_uid": "G-616994-2026",
@@ -58,7 +58,7 @@
     "method": "GET",
     "path": "/api/signuproute/auth/users/me",
     "status": 200,
-    "duration_ms": 144,
+    "duration_ms": 110,
     "success": true,
     "data": {
       "message": "Profile fetched successfully",
@@ -85,11 +85,263 @@
     "method": "GET",
     "path": "/api/signuproute/all_user",
     "status": 200,
-    "duration_ms": 137,
+    "duration_ms": 122,
     "success": true,
     "data": {
       "message": "Users fetched successfully",
       "users": [
+        {
+          "id": 41,
+          "user_uid": "G-268829-2026",
+          "role": "user",
+          "auth_provider": "google",
+          "phone_number": null,
+          "email": null,
+          "name": "MomentsTester",
+          "gender": null,
+          "age": null,
+          "profile_image": null,
+          "is_verified": true,
+          "created_at": "2026-11-25T13:22:57.874Z"
+        },
+        {
+          "id": 40,
+          "user_uid": "G-474587-2026",
+          "role": "user",
+          "auth_provider": "google",
+          "phone_number": null,
+          "email": null,
+          "name": "Tester",
+          "gender": null,
+          "age": null,
+          "profile_image": null,
+          "is_verified": true,
+          "created_at": "2026-11-25T13:21:32.280Z"
+        },
+        {
+          "id": 39,
+          "user_uid": "G-720113-2026",
+          "role": "user",
+          "auth_provider": "apple",
+          "phone_number": null,
+          "email": null,
+          "name": "GamerB_779",
+          "gender": null,
+          "age": null,
+          "profile_image": null,
+          "is_verified": true,
+          "created_at": "2026-11-25T13:07:23.904Z"
+        },
+        {
+          "id": 38,
+          "user_uid": "G-680619-2026",
+          "role": "user",
+          "auth_provider": "google",
+          "phone_number": null,
+          "email": null,
+          "name": "GamerA_779",
+          "gender": null,
+          "age": null,
+          "profile_image": null,
+          "is_verified": true,
+          "created_at": "2026-11-25T13:07:23.759Z"
+        },
+        {
+          "id": 37,
+          "user_uid": "G-428731-2026",
+          "role": "user",
+          "auth_provider": "apple",
+          "phone_number": null,
+          "email": null,
+          "name": "ChatPlayer2_335",
+          "gender": null,
+          "age": null,
+          "profile_image": null,
+          "is_verified": true,
+          "created_at": "2026-11-25T13:02:20.505Z"
+        },
+        {
+          "id": 36,
+          "user_uid": "G-713629-2026",
+          "role": "user",
+          "auth_provider": "google",
+          "phone_number": null,
+          "email": null,
+          "name": "ChatPlayer1_335",
+          "gender": null,
+          "age": null,
+          "profile_image": null,
+          "is_verified": true,
+          "created_at": "2026-11-25T13:02:20.388Z"
+        },
+        {
+          "id": 35,
+          "user_uid": "G-792934-2026",
+          "role": "user",
+          "auth_provider": "google",
+          "phone_number": null,
+          "email": null,
+          "name": "ChatTester",
+          "gender": null,
+          "age": null,
+          "profile_image": null,
+          "is_verified": true,
+          "created_at": "2026-11-25T13:01:38.753Z"
+        },
+        {
+          "id": 34,
+          "user_uid": "G-527985-2026",
+          "role": "user",
+          "auth_provider": "google",
+          "phone_number": null,
+          "email": null,
+          "name": "ChatProbe",
+          "gender": null,
+          "age": null,
+          "profile_image": null,
+          "is_verified": true,
+          "created_at": "2026-11-25T13:01:23.403Z"
+        },
+        {
+          "id": 33,
+          "user_uid": "G-986438-2026",
+          "role": "user",
+          "auth_provider": "phone",
+          "phone_number": "+91466494949985",
+          "email": null,
+          "name": "Ghazi testing",
+          "gender": "male",
+          "age": 26,
+          "profile_image": null,
+          "is_verified": true,
+          "created_at": "2026-11-25T12:58:49.465Z"
+        },
+        {
+          "id": 32,
+          "user_uid": "G-819964-2026",
+          "role": "user",
+          "auth_provider": "phone",
+          "phone_number": "+91776686846468",
+          "email": null,
+          "name": "Kashif sarwar",
+          "gender": "male",
+          "age": 26,
+          "profile_image": null,
+          "is_verified": true,
+          "created_at": "2026-11-25T12:54:42.317Z"
+        },
+        {
+          "id": 31,
+          "user_uid": "G-261224-2026",
+          "role": "user",
+          "auth_provider": "phone",
+          "phone_number": "+91787797977979",
+          "email": null,
+          "name": "test123456",
+          "gender": "male",
+          "age": 26,
+          "profile_image": null,
+          "is_verified": true,
+          "created_at": "2026-11-25T12:53:13.904Z"
+        },
+        {
+          "id": 30,
+          "user_uid": "G-225726-2026",
+          "role": "user",
+          "auth_provider": "apple",
+          "phone_number": null,
+          "email": null,
+          "name": "Bob_26",
+          "gender": null,
+          "age": null,
+          "profile_image": null,
+          "is_verified": true,
+          "created_at": "2026-11-25T12:34:47.327Z"
+        },
+        {
+          "id": 29,
+          "user_uid": "G-241590-2026",
+          "role": "user",
+          "auth_provider": "google",
+          "phone_number": null,
+          "email": null,
+          "name": "Alice_26",
+          "gender": null,
+          "age": null,
+          "profile_image": null,
+          "is_verified": true,
+          "created_at": "2026-11-25T12:34:47.194Z"
+        },
+        {
+          "id": 28,
+          "user_uid": "G-674786-2026",
+          "role": "user",
+          "auth_provider": "phone",
+          "phone_number": "+9178693321478",
+          "email": null,
+          "name": "Po",
+          "gender": "male",
+          "age": 27,
+          "profile_image": null,
+          "is_verified": true,
+          "created_at": "2026-11-25T12:34:33.100Z"
+        },
+        {
+          "id": 27,
+          "user_uid": "G-470820-2026",
+          "role": "user",
+          "auth_provider": "apple",
+          "phone_number": null,
+          "email": null,
+          "name": "ReceiverPlayer_6537",
+          "gender": null,
+          "age": null,
+          "profile_image": null,
+          "is_verified": true,
+          "created_at": "2026-11-25T12:34:26.880Z"
+        },
+        {
+          "id": 26,
+          "user_uid": "G-897186-2026",
+          "role": "user",
+          "auth_provider": "google",
+          "phone_number": null,
+          "email": null,
+          "name": "SenderPlayer_6537",
+          "gender": null,
+          "age": null,
+          "profile_image": null,
+          "is_verified": true,
+          "created_at": "2026-11-25T12:34:26.739Z"
+        },
+        {
+          "id": 25,
+          "user_uid": "G-932934-2026",
+          "role": "user",
+          "auth_provider": "apple",
+          "phone_number": null,
+          "email": null,
+          "name": "ReceiverPlayer_1258",
+          "gender": null,
+          "age": null,
+          "profile_image": null,
+          "is_verified": true,
+          "created_at": "2026-11-25T12:34:01.654Z"
+        },
+        {
+          "id": 24,
+          "user_uid": "G-947908-2026",
+          "role": "user",
+          "auth_provider": "google",
+          "phone_number": null,
+          "email": null,
+          "name": "SenderPlayer_1258",
+          "gender": null,
+          "age": null,
+          "profile_image": null,
+          "is_verified": true,
+          "created_at": "2026-11-25T12:34:01.465Z"
+        },
         {
           "id": 23,
           "user_uid": "G-964872-2026",
@@ -420,7 +672,7 @@
     "method": "PUT",
     "path": "/api/signuproute/auth/users/update/21",
     "status": 500,
-    "duration_ms": 124,
+    "duration_ms": 97,
     "success": false,
     "error": {
       "message": "Server error",
@@ -432,7 +684,7 @@
     "method": "POST",
     "path": "/api/follow/request/22",
     "status": 400,
-    "duration_ms": 134,
+    "duration_ms": 124,
     "success": false,
     "error": {
       "message": "Follow request already sent"
@@ -443,7 +695,7 @@
     "method": "GET",
     "path": "/api/follow/requests",
     "status": 500,
-    "duration_ms": 134,
+    "duration_ms": 118,
     "success": false,
     "error": {
       "message": "Server error",
@@ -455,7 +707,7 @@
     "method": "GET",
     "path": "/api/follow/followers/22",
     "status": 500,
-    "duration_ms": 162,
+    "duration_ms": 129,
     "success": false,
     "error": {
       "message": "Server error",
@@ -467,7 +719,7 @@
     "method": "GET",
     "path": "/api/follow/following/21",
     "status": 500,
-    "duration_ms": 151,
+    "duration_ms": 149,
     "success": false,
     "error": {
       "message": "Server error",
@@ -479,7 +731,7 @@
     "method": "GET",
     "path": "/api/follow/stats/21",
     "status": 200,
-    "duration_ms": 114,
+    "duration_ms": 134,
     "success": true,
     "data": {
       "message": "Follow stats fetched successfully",
@@ -494,7 +746,7 @@
     "method": "GET",
     "path": "/api/follow/status/22",
     "status": 200,
-    "duration_ms": 100,
+    "duration_ms": 147,
     "success": true,
     "data": {
       "message": "Status fetched successfully",
@@ -507,15 +759,15 @@
     "method": "POST",
     "path": "/api/blockroute/22",
     "status": 201,
-    "duration_ms": 103,
+    "duration_ms": 133,
     "success": true,
     "data": {
       "message": "User blocked successfully",
       "data": {
-        "id": 2,
+        "id": 3,
         "blocker_id": 21,
         "blocked_id": 22,
-        "created_at": "2026-11-25T12:14:26.378Z"
+        "created_at": "2026-11-25T13:27:22.636Z"
       }
     }
   },
@@ -524,7 +776,7 @@
     "method": "GET",
     "path": "/api/blockroute/list",
     "status": 500,
-    "duration_ms": 120,
+    "duration_ms": 142,
     "success": false,
     "error": {
       "message": "Server error",
@@ -536,7 +788,7 @@
     "method": "GET",
     "path": "/api/blockroute/count",
     "status": 200,
-    "duration_ms": 118,
+    "duration_ms": 139,
     "success": true,
     "data": {
       "message": "Blocked count fetched successfully",
@@ -548,7 +800,7 @@
     "method": "GET",
     "path": "/api/blockroute/status/22",
     "status": 200,
-    "duration_ms": 122,
+    "duration_ms": 143,
     "success": true,
     "data": {
       "message": "Block status fetched successfully",
@@ -560,15 +812,15 @@
     "method": "DELETE",
     "path": "/api/blockroute/22",
     "status": 200,
-    "duration_ms": 112,
+    "duration_ms": 140,
     "success": true,
     "data": {
       "message": "User unblocked successfully",
       "data": {
-        "id": 2,
+        "id": 3,
         "blocker_id": 21,
         "blocked_id": 22,
-        "created_at": "2026-11-25T12:14:26.378Z"
+        "created_at": "2026-11-25T13:27:22.636Z"
       }
     }
   },
@@ -577,7 +829,7 @@
     "method": "POST",
     "path": "/api/report/report/22",
     "status": 400,
-    "duration_ms": 107,
+    "duration_ms": 155,
     "success": false,
     "error": {
       "message": "You already have a pending report against this user"
@@ -588,7 +840,7 @@
     "method": "GET",
     "path": "/api/report/report/my-reports",
     "status": 500,
-    "duration_ms": 112,
+    "duration_ms": 178,
     "success": false,
     "error": {
       "message": "Server error",
@@ -600,7 +852,7 @@
     "method": "GET",
     "path": "/api/banner",
     "status": 404,
-    "duration_ms": 94,
+    "duration_ms": 165,
     "success": false,
     "error": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /api/banner</pre>\n</body>\n</html>\n"
   },
@@ -609,7 +861,7 @@
     "method": "GET",
     "path": "/api/chatroute/inbox",
     "status": 200,
-    "duration_ms": 147,
+    "duration_ms": 171,
     "success": true,
     "data": {
       "message": "Inbox fetched successfully",
@@ -620,8 +872,8 @@
           "chat_uid": "CHAT-268837-2026",
           "last_message": "\ud83c\udfa4 Voice message",
           "last_message_type": "voice",
-          "last_message_at": "2026-11-25T12:07:06.972Z",
-          "unread_count": 1,
+          "last_message_at": "2026-11-25T12:14:27.674Z",
+          "unread_count": 2,
           "player_id": 22,
           "player_uid": "G-616994-2026",
           "player_name": "Crawler Bot 2",
@@ -635,7 +887,7 @@
     "method": "POST",
     "path": "/api/chatroute/start/22",
     "status": 200,
-    "duration_ms": 105,
+    "duration_ms": 140,
     "success": true,
     "data": {
       "message": "Chat room ready",
@@ -646,11 +898,11 @@
         "user2_id": 22,
         "last_message": "\ud83c\udfa4 Voice message",
         "last_message_type": "voice",
-        "last_message_at": "2026-11-25T12:07:06.972Z",
-        "user1_unread": 1,
+        "last_message_at": "2026-11-25T12:14:27.674Z",
+        "user1_unread": 2,
         "user2_unread": 0,
         "created_at": "2026-11-25T12:07:06.655Z",
-        "updated_at": "2026-11-25T12:07:06.972Z"
+        "updated_at": "2026-11-25T12:14:27.674Z"
       }
     }
   },
@@ -659,12 +911,12 @@
     "method": "POST",
     "path": "/api/chatroute/2/send",
     "status": 201,
-    "duration_ms": 125,
+    "duration_ms": 159,
     "success": true,
     "data": {
       "message": "Message sent",
       "data": {
-        "id": 3,
+        "id": 24,
         "chat_id": 2,
         "sender_id": 21,
         "receiver_id": 22,
@@ -683,8 +935,8 @@
         "is_deleted_for_everyone": false,
         "deleted_for_users": [],
         "starred_by": [],
-        "created_at": "2026-11-25T12:14:27.542Z",
-        "updated_at": "2026-11-25T12:14:27.542Z"
+        "created_at": "2026-11-25T13:27:24.163Z",
+        "updated_at": "2026-11-25T13:27:24.163Z"
       }
     }
   },
@@ -693,12 +945,12 @@
     "method": "POST",
     "path": "/api/chatroute/2/send",
     "status": 201,
-    "duration_ms": 128,
+    "duration_ms": 161,
     "success": true,
     "data": {
       "message": "Voice message sent",
       "data": {
-        "id": 4,
+        "id": 25,
         "chat_id": 2,
         "sender_id": 22,
         "receiver_id": 21,
@@ -717,8 +969,8 @@
         "is_deleted_for_everyone": false,
         "deleted_for_users": [],
         "starred_by": [],
-        "created_at": "2026-11-25T12:14:27.669Z",
-        "updated_at": "2026-11-25T12:14:27.669Z"
+        "created_at": "2026-11-25T13:27:24.336Z",
+        "updated_at": "2026-11-25T13:27:24.336Z"
       }
     }
   },
@@ -727,13 +979,13 @@
     "method": "GET",
     "path": "/api/chatroute/2/messages?limit=50&offset=0",
     "status": 200,
-    "duration_ms": 119,
+    "duration_ms": 178,
     "success": true,
     "data": {
       "message": "Chat history fetched successfully",
       "chat_id": 2,
       "chat_uid": "CHAT-268837-2026",
-      "count": 4,
+      "count": 6,
       "messages": [
         {
           "id": 1,
@@ -801,22 +1053,24 @@
           "sender_id": 21,
           "receiver_id": 22,
           "message_type": "text",
-          "content": "Hello Bot 2! Ready for an arena board match?",
+          "content": "Hello Bot 2! Match confirmed.",
           "media_url": null,
           "media_duration": null,
           "file_name": null,
           "file_size": null,
           "reply_to_message_id": null,
-          "reactions": {},
-          "status": "sent",
-          "read_at": null,
-          "is_edited": false,
+          "reactions": {
+            "22": "\ud83d\udd25"
+          },
+          "status": "read",
+          "read_at": "2026-11-25T12:14:27.908Z",
+          "is_edited": true,
           "is_pinned": false,
           "is_deleted_for_everyone": false,
           "deleted_for_users": [],
           "starred_by": [],
           "created_at": "2026-11-25T12:14:27.542Z",
-          "updated_at": "2026-11-25T12:14:27.542Z",
+          "updated_at": "2026-11-25T12:14:28.154Z",
           "sender_name": "Crawler Bot 1",
           "sender_uid": "G-515305-2026",
           "sender_image": null,
@@ -852,6 +1106,64 @@
           "reply_content": null,
           "reply_message_type": null,
           "reply_sender_id": null
+        },
+        {
+          "id": 24,
+          "chat_id": 2,
+          "sender_id": 21,
+          "receiver_id": 22,
+          "message_type": "text",
+          "content": "Hello Bot 2! Ready for an arena board match?",
+          "media_url": null,
+          "media_duration": null,
+          "file_name": null,
+          "file_size": null,
+          "reply_to_message_id": null,
+          "reactions": {},
+          "status": "sent",
+          "read_at": null,
+          "is_edited": false,
+          "is_pinned": false,
+          "is_deleted_for_everyone": false,
+          "deleted_for_users": [],
+          "starred_by": [],
+          "created_at": "2026-11-25T13:27:24.163Z",
+          "updated_at": "2026-11-25T13:27:24.163Z",
+          "sender_name": "Crawler Bot 1",
+          "sender_uid": "G-515305-2026",
+          "sender_image": null,
+          "reply_content": null,
+          "reply_message_type": null,
+          "reply_sender_id": null
+        },
+        {
+          "id": 25,
+          "chat_id": 2,
+          "sender_id": 22,
+          "receiver_id": 21,
+          "message_type": "voice",
+          "content": "\ud83c\udfa4 Voice note (0:04)",
+          "media_url": null,
+          "media_duration": 4,
+          "file_name": null,
+          "file_size": null,
+          "reply_to_message_id": null,
+          "reactions": {},
+          "status": "sent",
+          "read_at": null,
+          "is_edited": false,
+          "is_pinned": false,
+          "is_deleted_for_everyone": false,
+          "deleted_for_users": [],
+          "starred_by": [],
+          "created_at": "2026-11-25T13:27:24.336Z",
+          "updated_at": "2026-11-25T13:27:24.336Z",
+          "sender_name": "Crawler Bot 2",
+          "sender_uid": "G-616994-2026",
+          "sender_image": null,
+          "reply_content": null,
+          "reply_message_type": null,
+          "reply_sender_id": null
         }
       ]
     }
@@ -861,27 +1173,27 @@
     "method": "PUT",
     "path": "/api/chatroute/2/read",
     "status": 200,
-    "duration_ms": 115,
+    "duration_ms": 149,
     "success": true,
     "data": {
       "message": "Messages marked as read",
       "chat_id": 2,
       "read_message_ids": [
-        3
+        24
       ]
     }
   },
   {
     "name": "React to Message",
     "method": "PUT",
-    "path": "/api/chatroute/message/3/react",
+    "path": "/api/chatroute/message/24/react",
     "status": 200,
-    "duration_ms": 110,
+    "duration_ms": 146,
     "success": true,
     "data": {
       "message": "Reaction updated",
       "data": {
-        "id": 3,
+        "id": 24,
         "chat_id": 2,
         "sender_id": 21,
         "receiver_id": 22,
@@ -896,28 +1208,28 @@
           "22": "\ud83d\udd25"
         },
         "status": "read",
-        "read_at": "2026-11-25T12:14:27.908Z",
+        "read_at": "2026-11-25T13:27:24.664Z",
         "is_edited": false,
         "is_pinned": false,
         "is_deleted_for_everyone": false,
         "deleted_for_users": [],
         "starred_by": [],
-        "created_at": "2026-11-25T12:14:27.542Z",
-        "updated_at": "2026-11-25T12:14:28.024Z"
+        "created_at": "2026-11-25T13:27:24.163Z",
+        "updated_at": "2026-11-25T13:27:24.811Z"
       }
     }
   },
   {
     "name": "Edit Message (Bot 1)",
     "method": "PUT",
-    "path": "/api/chatroute/message/3/edit",
+    "path": "/api/chatroute/message/24/edit",
     "status": 200,
-    "duration_ms": 139,
+    "duration_ms": 138,
     "success": true,
     "data": {
       "message": "Message edited successfully",
       "data": {
-        "id": 3,
+        "id": 24,
         "chat_id": 2,
         "sender_id": 21,
         "receiver_id": 22,
@@ -932,14 +1244,14 @@
           "22": "\ud83d\udd25"
         },
         "status": "read",
-        "read_at": "2026-11-25T12:14:27.908Z",
+        "read_at": "2026-11-25T13:27:24.664Z",
         "is_edited": true,
         "is_pinned": false,
         "is_deleted_for_everyone": false,
         "deleted_for_users": [],
         "starred_by": [],
-        "created_at": "2026-11-25T12:14:27.542Z",
-        "updated_at": "2026-11-25T12:14:28.154Z"
+        "created_at": "2026-11-25T13:27:24.163Z",
+        "updated_at": "2026-11-25T13:27:24.951Z"
       }
     }
   },
@@ -948,12 +1260,37 @@
     "method": "GET",
     "path": "/api/chatroute/2/search?q=Match",
     "status": 200,
-    "duration_ms": 138,
+    "duration_ms": 151,
     "success": true,
     "data": {
       "message": "Search results fetched successfully",
-      "count": 2,
+      "count": 3,
       "messages": [
+        {
+          "id": 24,
+          "chat_id": 2,
+          "sender_id": 21,
+          "receiver_id": 22,
+          "message_type": "text",
+          "content": "Hello Bot 2! Match confirmed.",
+          "media_url": null,
+          "media_duration": null,
+          "file_name": null,
+          "file_size": null,
+          "reply_to_message_id": null,
+          "reactions": {
+            "22": "\ud83d\udd25"
+          },
+          "status": "read",
+          "read_at": "2026-11-25T13:27:24.664Z",
+          "is_edited": true,
+          "is_pinned": false,
+          "is_deleted_for_everyone": false,
+          "deleted_for_users": [],
+          "starred_by": [],
+          "created_at": "2026-11-25T13:27:24.163Z",
+          "updated_at": "2026-11-25T13:27:24.951Z"
+        },
         {
           "id": 3,
           "chat_id": 2,
@@ -1012,12 +1349,58 @@
     "method": "GET",
     "path": "/api/momentroute/moments?limit=20&offset=0",
     "status": 200,
-    "duration_ms": 153,
+    "duration_ms": 148,
     "success": true,
     "data": {
       "message": "Moments fetched successfully",
-      "count": 0,
-      "moments": []
+      "count": 3,
+      "moments": [
+        {
+          "id": 4,
+          "caption": "asdasda",
+          "image_url": "http://72-61-235-208.sslip.io/uploads/moments/moment-1795611319756-718728875.png",
+          "created_at": "2026-11-25T12:55:19.767Z",
+          "user_id": 32,
+          "user_uid": "G-819964-2026",
+          "user_name": "Kashif sarwar",
+          "user_profile_image": null,
+          "total_reactions": 1,
+          "reaction_breakdown": {
+            "love": 1
+          },
+          "my_reaction": null
+        },
+        {
+          "id": 3,
+          "caption": "askdhaskbda",
+          "image_url": "http://72-61-235-208.sslip.io/uploads/moments/moment-1795611217438-962395562.png",
+          "created_at": "2026-11-25T12:53:37.449Z",
+          "user_id": 31,
+          "user_uid": "G-261224-2026",
+          "user_name": "test123456",
+          "user_profile_image": null,
+          "total_reactions": 1,
+          "reaction_breakdown": {
+            "wow": 1
+          },
+          "my_reaction": null
+        },
+        {
+          "id": 1,
+          "caption": "werhriuriuwiuhwre",
+          "image_url": "http://72-61-235-208.sslip.io/uploads/moments/moment-1795609790385-887913182.png",
+          "created_at": "2026-11-25T12:29:50.407Z",
+          "user_id": 18,
+          "user_uid": "G-160255-2026",
+          "user_name": "Snapchat Player",
+          "user_profile_image": null,
+          "total_reactions": 1,
+          "reaction_breakdown": {
+            "haha": 1
+          },
+          "my_reaction": null
+        }
+      ]
     }
   },
   {
@@ -1025,10 +1408,61 @@
     "method": "POST",
     "path": "/api/momentroute/moments",
     "status": 400,
-    "duration_ms": 153,
+    "duration_ms": 154,
     "success": false,
     "error": {
       "message": "Moment image is required"
+    }
+  },
+  {
+    "name": "React to Moment (Bot 2 reacts 'love')",
+    "method": "POST",
+    "path": "/api/momentroute/moments/4/react",
+    "status": 200,
+    "duration_ms": 162,
+    "success": true,
+    "data": {
+      "message": "Reaction added successfully",
+      "action": "added",
+      "reaction": {
+        "id": 4,
+        "moment_id": 4,
+        "user_id": 22,
+        "reaction_type": "love",
+        "created_at": "2026-11-25T13:27:25.567Z"
+      }
+    }
+  },
+  {
+    "name": "View Moment Reactions",
+    "method": "GET",
+    "path": "/api/momentroute/moments/4/reactions",
+    "status": 200,
+    "duration_ms": 142,
+    "success": true,
+    "data": {
+      "message": "Reactions fetched successfully",
+      "count": 2,
+      "reactions": [
+        {
+          "id": 4,
+          "reaction_type": "love",
+          "created_at": "2026-11-25T13:27:25.567Z",
+          "user_id": 22,
+          "user_uid": "G-616994-2026",
+          "name": "Crawler Bot 2",
+          "profile_image": null
+        },
+        {
+          "id": 3,
+          "reaction_type": "love",
+          "created_at": "2026-11-25T13:20:44.182Z",
+          "user_id": 32,
+          "user_uid": "G-819964-2026",
+          "name": "Kashif sarwar",
+          "profile_image": null
+        }
+      ]
     }
   },
   {
@@ -1036,7 +1470,7 @@
     "method": "GET",
     "path": "/api/momentroute/moments/user/21",
     "status": 200,
-    "duration_ms": 147,
+    "duration_ms": 129,
     "success": true,
     "data": {
       "message": "User moments fetched successfully",

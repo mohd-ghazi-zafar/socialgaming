@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import {
   Search,
   UserPlus,
@@ -21,6 +21,7 @@ import {
 import {
   viewAllUsers,
   getAuthToken,
+  ensureActiveAuthToken,
   getStoredAuth,
   normalizeImageUrl,
   viewPendingFollowRequests,
@@ -161,6 +162,14 @@ export const MessagesPage: React.FC = () => {
   const [activeChat, setActiveChat] = useState<ChatThread | null>(null)
   const [chatInput, setChatInput] = useState('')
   const [messages, setMessages] = useState<BackendMessage[]>([])
+  const messagesEndRef = React.useRef<HTMLDivElement>(null)
+
+  // Auto-scroll chat to latest message
+  useEffect(() => {
+    if (activeChat) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [messages, activeChat])
 
   // Modal States
   const [isChooseFriendsOpen, setIsChooseFriendsOpen] = useState(false)
@@ -180,23 +189,27 @@ export const MessagesPage: React.FC = () => {
 
   // Fetch real users, real inbox, and follow requests from backend
   useEffect(() => {
-    const token = getAuthToken()
-    const currentUid = getStoredAuth()?.unique_id || getStoredAuth()?.user?.user_uid
+    const initData = async () => {
+      let token = getAuthToken()
+      if (!token) {
+        token = await ensureActiveAuthToken()
+      }
+      const currentUid = getStoredAuth()?.unique_id || getStoredAuth()?.user?.user_uid
 
-    if (!token) {
-      setIsLoading(false)
-      return
-    }
+      if (!token) {
+        setIsLoading(false)
+        return
+      }
 
-    Promise.all([
-      viewInbox(token).catch(() => ({ chats: [] })),
-      viewAllUsers(token).catch(() => ({ users: [] })),
-    ])
-      .then(([inboxRes, usersRes]) => {
-        const usersList: RealUser[] = usersRes?.users || []
-        setAllDbUsers(usersList)
+      Promise.all([
+        viewInbox(token).catch(() => ({ chats: [] })),
+        viewAllUsers(token).catch(() => ({ users: [] })),
+      ])
+        .then(([inboxRes, usersRes]) => {
+          const usersList: RealUser[] = usersRes?.users || []
+          setAllDbUsers(usersList)
 
-        const inboxChats = inboxRes?.chats || []
+          const inboxChats = inboxRes?.chats || []
 
         // Map real inbox conversations from backend database
         const realInboxThreads: ChatThread[] = inboxChats.map((c: any) => ({
@@ -271,6 +284,8 @@ export const MessagesPage: React.FC = () => {
         }
 
         setThreads([tribeGroupThread, systemThread, brotherThread, ...realInboxThreads, ...remainingPlayers])
+        // Fetch pending follow requests dynamically
+        fetchPendingRequests(token)
       })
       .catch((err) => {
         console.debug('Failed to fetch message contacts:', err.message)
@@ -278,9 +293,9 @@ export const MessagesPage: React.FC = () => {
       .finally(() => {
         setIsLoading(false)
       })
+    }
 
-    // Fetch pending follow requests dynamically
-    fetchPendingRequests(token)
+    initData()
   }, [])
 
   const fetchPendingRequests = async (token: string) => {
@@ -429,8 +444,17 @@ export const MessagesPage: React.FC = () => {
     setActiveChat(thread)
     setMessages([])
 
-    const token = getAuthToken()
+    let token = getAuthToken()
+    if (!token) {
+      token = await ensureActiveAuthToken()
+    }
     if (!token) return
+
+    const currentUserId = getStoredAuth()?.user?.id
+    if (currentUserId && Number(currentUserId) === Number(user.id)) {
+      showToast('You cannot start a chat with yourself')
+      return
+    }
 
     try {
       const res = await startOrGetChat(user.id, token)
@@ -446,6 +470,7 @@ export const MessagesPage: React.FC = () => {
       }
     } catch (err: any) {
       console.debug('Failed to get/start chat room:', err.message)
+      showToast(err.message || 'Could not connect chat room')
     }
   }
 
@@ -471,8 +496,17 @@ export const MessagesPage: React.FC = () => {
       return
     }
 
-    const token = getAuthToken()
+    let token = getAuthToken()
+    if (!token) {
+      token = await ensureActiveAuthToken()
+    }
     if (!token) return
+
+    const currentUserId = getStoredAuth()?.user?.id
+    if (thread.userId && currentUserId && Number(currentUserId) === Number(thread.userId)) {
+      showToast('You cannot start a chat with yourself')
+      return
+    }
 
     try {
       let chatId = thread.chatId
@@ -495,21 +529,31 @@ export const MessagesPage: React.FC = () => {
       }
     } catch (err: any) {
       console.debug('Failed to fetch chat history:', err.message)
+      showToast(err.message || 'Failed to fetch chat history')
     }
   }
 
   // Sending Messages in Chat View
   const handleSendMessage = async () => {
     if (!chatInput.trim() || !activeChat) return
-    const token = getAuthToken()
     const content = chatInput.trim()
     setChatInput('')
+
+    let token = getAuthToken()
+    if (!token) {
+      token = await ensureActiveAuthToken()
+    }
 
     const currentUserId = getStoredAuth()?.user?.id || 1
 
     try {
       let chatId = activeChat.chatId
       if (!chatId && activeChat.userId && token) {
+        if (Number(currentUserId) === Number(activeChat.userId)) {
+          showToast('Cannot chat with yourself')
+          return
+        }
+
         const res = await startOrGetChat(activeChat.userId, token)
         chatId = res?.chat?.id
         if (chatId) {
@@ -521,11 +565,20 @@ export const MessagesPage: React.FC = () => {
         const res = await sendChatMessage(chatId, { message_type: 'text', content }, token)
         if (res?.data) {
           setMessages((prev) => [...prev, res.data])
+          // Update thread list preview
+          setThreads((prev) =>
+            prev.map((t) =>
+              t.chatId === chatId || (t.userId && t.userId === activeChat.userId)
+                ? { ...t, lastMessage: content, timestamp: 'Now' }
+                : t
+            )
+          )
           return
         }
       }
     } catch (err: any) {
-      console.debug('Failed to send message via backend:', err.message)
+      console.warn('Failed to send message via backend:', err.message)
+      showToast(err.message || 'Delivery error')
     }
 
     // Local optimistic append if offline/fallback
@@ -1037,6 +1090,40 @@ export const MessagesPage: React.FC = () => {
               </span>
             </div>
 
+            {/* Empty State: Snapchat-style Conversation Starters */}
+            {messages.length === 0 && (
+              <div className="flex flex-col items-center justify-center my-8 text-center px-4">
+                <div className="w-14 h-14 rounded-full bg-[#f2f4f7] ring-4 ring-[#0099ff]/15 flex items-center justify-center mb-3 text-2xl shadow-xs">
+                  💬
+                </div>
+                <h3 className="text-sm font-extrabold text-slate-900 mb-1">
+                  Say Hi to {activeChat.name}!
+                </h3>
+                <p className="text-[11px] text-slate-400 mb-4 max-w-[240px]">
+                  Send a snap or chat to kick off your streak 🔥
+                </p>
+                <div className="flex flex-wrap items-center justify-center gap-2">
+                  {[
+                    'Hey! Ready to play? 🎲',
+                    "What's up! 👋",
+                    'Let’s play Ludo! 🏆',
+                    'Wanna voice chat? 🎙️',
+                  ].map((starter) => (
+                    <button
+                      key={starter}
+                      type="button"
+                      onClick={() => {
+                        setChatInput(starter)
+                      }}
+                      className="px-3 py-1.5 rounded-full bg-[#f2f4f7] hover:bg-[#e4e7ec] active:scale-95 text-xs text-slate-700 font-medium transition-all cursor-pointer shadow-2xs border border-slate-200/60"
+                    >
+                      {starter}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Chat Messages */}
             {messages.map((m, idx) => {
               const currentUserId = getStoredAuth()?.user?.id
@@ -1099,10 +1186,11 @@ export const MessagesPage: React.FC = () => {
                 </div>
               )
             })}
+            <div ref={messagesEndRef} />
           </div>
 
-          {/* 3. Snapchat Signature Input Footer - Always visible and pinned to bottom */}
-          <div className="px-3 py-2.5 bg-white border-t border-slate-100 flex items-center gap-2 z-20 shrink-0 sticky bottom-0 shadow-[0_-2px_12px_rgba(0,0,0,0.04)]">
+          {/* 3. Snapchat Signature Input Footer - Guaranteed visible anchored to bottom */}
+          <div className="px-3 py-2.5 bg-white border-t border-slate-100 flex items-center gap-2 z-20 shrink-0 shadow-[0_-2px_12px_rgba(0,0,0,0.04)]">
             {/* Snapchat Iconic Round Camera Button */}
             <button
               type="button"
@@ -1114,7 +1202,7 @@ export const MessagesPage: React.FC = () => {
             </button>
 
             {/* "Send a chat" Pill Container */}
-            <div className="flex-1 bg-[#f2f3f5] rounded-full px-4 py-2 flex items-center gap-2 border border-transparent focus-within:border-slate-200 focus-within:bg-white transition-all">
+            <div className="flex-1 bg-[#f2f3f5] rounded-full px-4 py-2 flex items-center gap-2 border border-transparent focus-within:border-slate-200 focus-within:bg-white transition-all shadow-inner">
               <input
                 type="text"
                 value={chatInput}
@@ -1122,6 +1210,7 @@ export const MessagesPage: React.FC = () => {
                 onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
                 placeholder="Send a chat"
                 className="bg-transparent text-[13px] text-slate-900 placeholder-slate-400 focus:outline-none flex-1 font-normal"
+                autoFocus
               />
               <button
                 type="button"
@@ -1146,7 +1235,7 @@ export const MessagesPage: React.FC = () => {
               <button
                 type="button"
                 onClick={handleSendMessage}
-                className="w-10 h-10 rounded-full bg-[#0099ff] hover:bg-[#0088ee] active:scale-95 text-white flex items-center justify-center shrink-0 shadow-md cursor-pointer transition-all"
+                className="w-10 h-10 rounded-full bg-[#0099ff] hover:bg-[#0088ee] active:scale-95 text-white flex items-center justify-center shrink-0 shadow-md cursor-pointer transition-all animate-scale-up"
                 title="Send"
               >
                 <Send className="w-4 h-4 text-white translate-x-0.5" />

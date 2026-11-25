@@ -36,8 +36,16 @@ export default function DeviceSimulator({ children }) {
   const [customHeight, setCustomHeight] = useState(1024)
   const [isLandscape, setIsLandscape] = useState(false)
 
-  // Display & Simulation options
-  const [scale, setScale] = useState(0.85)
+  // Display & Simulation options - dynamically initialize scale to fit user screen
+  const [scale, setScale] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const availH = window.innerHeight - 150
+      if (availH > 0) {
+        return Math.min(0.85, Math.max(0.4, Math.round((availH / 1060) * 20) / 20))
+      }
+    }
+    return 0.65
+  })
   const [hasBezel, setHasBezel] = useState(true)
   const [showStatusBar, setShowStatusBar] = useState(false)
   const [navStyle, setNavStyle] = useState('none') // 'gesture' | 'buttons' | 'none'
@@ -45,27 +53,75 @@ export default function DeviceSimulator({ children }) {
 
   const stageRef = useRef(null)
 
-  // Track window resize and auto-fit on mount so the device is never clipped
+  // Current active preset metadata
+  const activePreset = DEVICE_PRESETS.find((p) => p.id === selectedPresetId)
+
+  // Update dimensions when preset changes
+  const handlePresetChange = (presetId) => {
+    setSelectedPresetId(presetId)
+    const preset = DEVICE_PRESETS.find((p) => p.id === presetId)
+    if (preset) {
+      setCustomWidth(preset.width)
+      setCustomHeight(preset.height)
+    }
+  }
+
+  // Handle Orientation Toggle
+  const toggleOrientation = () => {
+    setIsLandscape((prev) => !prev)
+  }
+
+  // Calculate actual rendered viewport width & height
+  const baseWidth = customWidth
+  const baseHeight = customHeight
+  const screenWidth = isLandscape ? Math.max(baseWidth, baseHeight) : Math.min(baseWidth, baseHeight)
+  const screenHeight = isLandscape ? Math.min(baseWidth, baseHeight) : Math.max(baseWidth, baseHeight)
+
+  // Auto-fit function
+  const handleAutoFit = () => {
+    if (!stageRef.current) return
+    const stageWidth = stageRef.current.clientWidth - 48
+    const stageHeight = stageRef.current.clientHeight - 48
+    if (stageWidth <= 0 || stageHeight <= 0) return
+    const framePadding = hasBezel ? 36 : 0
+    const totalTargetW = screenWidth + framePadding
+    const totalTargetH = screenHeight + framePadding
+
+    const scaleX = stageWidth / totalTargetW
+    const scaleY = stageHeight / totalTargetH
+    const optimalScale = Math.min(scaleX, scaleY, 1.0)
+    if (optimalScale > 0.15) {
+      setScale(Math.max(0.35, Math.round(optimalScale * 20) / 20))
+    }
+  }
+
+  // Track window resize and auto-fit on mount & stage dimension changes with ResizeObserver
   useEffect(() => {
     const handleResize = () => {
       setIsMobileScreen(window.innerWidth <= 820)
       handleAutoFit()
     }
 
-    // Auto-fit immediately after render
-    const timer = setTimeout(() => {
-      handleAutoFit()
-    }, 150)
-
     window.addEventListener('resize', handleResize)
-    return () => {
-      clearTimeout(timer)
-      window.removeEventListener('resize', handleResize)
-    }
-  }, [])
 
-  // Current active preset metadata
-  const activePreset = DEVICE_PRESETS.find((p) => p.id === selectedPresetId)
+    let ro
+    if (stageRef.current && typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(() => {
+        handleAutoFit()
+      })
+      ro.observe(stageRef.current)
+    }
+
+    // Auto-fit immediately and after layout settles
+    handleAutoFit()
+    const timer = setTimeout(handleAutoFit, 100)
+
+    return () => {
+      window.removeEventListener('resize', handleResize)
+      if (ro) ro.disconnect()
+      clearTimeout(timer)
+    }
+  }, [selectedPresetId, customWidth, customHeight, isLandscape, hasBezel])
 
   // Initialize clock
   useEffect(() => {
@@ -98,45 +154,6 @@ export default function DeviceSimulator({ children }) {
         {children}
       </div>
     )
-  }
-
-  // Update dimensions when preset changes
-  const handlePresetChange = (presetId) => {
-    setSelectedPresetId(presetId)
-    const preset = DEVICE_PRESETS.find((p) => p.id === presetId)
-    if (preset) {
-      setCustomWidth(preset.width)
-      setCustomHeight(preset.height)
-    }
-  }
-
-  // Handle Orientation Toggle
-  const toggleOrientation = () => {
-    setIsLandscape((prev) => !prev)
-  }
-
-  // Calculate actual rendered viewport width & height
-  const baseWidth = customWidth
-  const baseHeight = customHeight
-  const screenWidth = isLandscape ? Math.max(baseWidth, baseHeight) : Math.min(baseWidth, baseHeight)
-  const screenHeight = isLandscape ? Math.min(baseWidth, baseHeight) : Math.max(baseWidth, baseHeight)
-
-  // Auto-fit function
-  const handleAutoFit = () => {
-    if (!stageRef.current) return
-    const stageWidth = stageRef.current.clientWidth - 40
-    const stageHeight = stageRef.current.clientHeight - 40
-    if (stageWidth <= 0 || stageHeight <= 0) return
-    const framePadding = hasBezel ? 30 : 0
-    const totalTargetW = screenWidth + framePadding
-    const totalTargetH = screenHeight + framePadding
-
-    const scaleX = stageWidth / totalTargetW
-    const scaleY = stageHeight / totalTargetH
-    const optimalScale = Math.min(scaleX, scaleY, 1.0)
-    if (optimalScale > 0.2) {
-      setScale(Math.max(0.4, Math.round(optimalScale * 20) / 20))
-    }
   }
 
   // Zoom handlers

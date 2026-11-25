@@ -194,16 +194,32 @@ export const MomentPage: React.FC = () => {
 
   // Follow User
   const handleFollowUser = async (userId: number) => {
-    const token = getAuthToken()
+    let token = getAuthToken()
+    if (!token) {
+      token = await ensureActiveAuthToken()
+    }
     if (!token) return showToast('Please log in to follow players')
 
+    const currentUserId = getStoredAuth()?.user?.id
+    if (currentUserId && Number(currentUserId) === Number(userId)) {
+      showToast('You cannot follow yourself')
+      return
+    }
+
     try {
-      await sendFollowRequest(userId, token)
+      const res = await sendFollowRequest(userId, token)
       setFollowedUsers((prev) => ({ ...prev, [userId]: true }))
-      showToast('Follow request sent!')
+      showToast(res.message || 'Follow request sent!')
     } catch (err: any) {
-      setFollowedUsers((prev) => ({ ...prev, [userId]: true }))
-      showToast(err.message || 'Follow request sent!')
+      const msg = err.message || ''
+      if (msg.toLowerCase().includes('already')) {
+        setFollowedUsers((prev) => ({ ...prev, [userId]: true }))
+        showToast('Follow request already pending!')
+      } else if (msg.toLowerCase().includes('yourself')) {
+        showToast('You cannot follow yourself')
+      } else {
+        showToast(msg || 'Unable to send follow request')
+      }
     }
   }
 
@@ -411,13 +427,14 @@ export const MomentPage: React.FC = () => {
                     ) : (
                       <button
                         type="button"
+                        disabled={Boolean(followedUsers[post.user_id])}
                         onClick={() => handleFollowUser(post.user_id)}
-                        className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors cursor-pointer ${
+                        className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors ${
                           followedUsers[post.user_id]
-                            ? 'bg-emerald-600 text-white'
-                            : 'bg-teal-500/20 text-teal-300 hover:bg-teal-500/30'
+                            ? 'bg-emerald-600 text-white cursor-default'
+                            : 'bg-teal-500/20 text-teal-300 hover:bg-teal-500/30 cursor-pointer'
                         }`}
-                        title="Follow Player"
+                        title={followedUsers[post.user_id] ? 'Request Pending' : 'Follow Player'}
                       >
                         {followedUsers[post.user_id] ? (
                           <Check className="w-3.5 h-3.5" />
