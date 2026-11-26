@@ -248,42 +248,8 @@ export const MessagesPage: React.FC = () => {
             unreadCount: 0,
           }))
 
-        // Image 5 Authentic Reference Channels alongside real backend data
-        const tribeGroupThread: ChatThread = {
-          id: 'tribe-group',
-          name: '...ديـ🦅ـياخار🇪🇬',
-          avatarImage: '/toptop/avatar_mal_doo.png',
-          avatarBg: 'bg-[#182229]',
-          countryFlag: FlagEG,
-          badgeText: 'Tribe Group',
-          badgeBg: 'bg-[#e0f2fe] text-[#0284c7]',
-          lastMessage: 'Welcome منعم الشوري to the tribe chat, ...',
-          timestamp: '10:40',
-          isGroup: true,
-        }
-
-        const systemThread: ChatThread = {
-          id: 'system-channel',
-          name: 'System Information',
-          avatarInitial: '🔔',
-          avatarBg: 'bg-[#00c59e]',
-          lastMessage: 'The tribe rocket has been launched! All rooms are online.',
-          timestamp: '00:09',
-          unreadCount: 3,
-          isSystem: true,
-        }
-
-        const brotherThread: ChatThread = {
-          id: 'brother-martyrs',
-          name: 'Brother Of Martyrs 🤍🥀',
-          avatarImage: '/toptop/avatar_fahad.png',
-          avatarBg: 'bg-amber-900',
-          lastMessage: 'How a re tou doing',
-          timestamp: '11-20',
-          unreadCount: 0,
-        }
-
-        setThreads([tribeGroupThread, systemThread, brotherThread, ...realInboxThreads, ...remainingPlayers])
+        // Pure dynamic database threads from live backend API
+        setThreads([...realInboxThreads, ...remainingPlayers])
         // Fetch pending follow requests dynamically
         fetchPendingRequests(token)
       })
@@ -773,17 +739,32 @@ export const MessagesPage: React.FC = () => {
             </div>
           </div>
 
-          {/* "Chats restored" Status Banner matching Image 3 */}
-          <div className="px-4 py-1 flex items-center gap-1.5 text-xs text-slate-400">
-            <Check className="w-3.5 h-3.5 text-slate-400 stroke-[2.5]" />
-            <span className="font-normal text-[11px]">Chats restored</span>
-          </div>
+          {/* Live Sync Status */}
+          {filteredThreads.length > 0 && (
+            <div className="px-4 py-1 flex items-center gap-1.5 text-xs text-slate-400">
+              <Check className="w-3.5 h-3.5 text-emerald-500 stroke-[2.5]" />
+              <span className="font-normal text-[11px] text-slate-400">Live Database Chats</span>
+            </div>
+          )}
 
           {/* Loading State */}
           {isLoading && (
             <div className="w-full py-12 flex items-center justify-center gap-2 text-xs text-slate-400">
               <div className="w-4 h-4 border-2 border-[#00dfb6] border-t-transparent rounded-full animate-spin" />
               <span>Loading chats...</span>
+            </div>
+          )}
+
+          {/* Empty State */}
+          {!isLoading && filteredThreads.length === 0 && (
+            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-slate-400 my-auto">
+              <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mb-3 text-slate-400">
+                <UserPlus className="w-8 h-8" />
+              </div>
+              <p className="text-sm font-semibold text-slate-700">No conversations yet</p>
+              <p className="text-xs text-slate-400 mt-1 max-w-[240px]">
+                Search for friends or tap the plus button above to start your first live conversation.
+              </p>
             </div>
           )}
 

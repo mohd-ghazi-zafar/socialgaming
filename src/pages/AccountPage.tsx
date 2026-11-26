@@ -261,17 +261,16 @@ export const AccountPage: React.FC<AccountPageProps> = ({
             </div>
             <div className="flex flex-col gap-0.5">
               <div className="flex items-center gap-1.5">
-                <FlagEG className="w-4 h-3 rounded-xs" />
                 <span className="text-xs font-black text-blue-200">
-                  ...دي_ياخاك
+                  {currentUser?.clan_name || 'UADA Community Tribe'}
                 </span>
               </div>
               <div className="flex items-center gap-1.5 text-[9.5px]">
                 <span className="bg-emerald-600/70 text-white px-1.5 py-0.2 rounded-full font-bold">
-                  Lv.5
+                  {currentUser?.level ? `Lv.${currentUser.level}` : 'Lv.1'}
                 </span>
                 <span className="bg-slate-700 text-slate-200 px-1.5 py-0.2 rounded-full font-bold">
-                  R1
+                  {currentUser?.rank || 'Player'}
                 </span>
               </div>
             </div>
