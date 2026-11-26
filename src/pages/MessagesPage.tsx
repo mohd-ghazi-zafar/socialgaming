@@ -17,6 +17,7 @@ import {
   Lock,
   Bell,
   User,
+  UserCheck,
 } from 'lucide-react'
 import {
   viewAllUsers,
@@ -66,6 +67,7 @@ interface ChatThread {
   timestamp: string
   unreadCount?: number
   isSystem?: boolean
+  isRequests?: boolean
   isGroup?: boolean
 }
 
@@ -146,8 +148,8 @@ function getSortedGroupKeys(groups: Record<string, RealUser[]>): string[] {
 }
 
 export const MessagesPage: React.FC = () => {
-  // Navigation view: 'messages' (Screen 3) or 'friends' (Screen 1)
-  const [currentView, setCurrentView] = useState<'messages' | 'friends'>('messages')
+  // Navigation view: 'messages' (Screen 3), 'friends' (Screen 1), or 'requests' (Screen 4)
+  const [currentView, setCurrentView] = useState<'messages' | 'friends' | 'requests'>('messages')
 
   // Search queries
   const [messageSearchQuery, setMessageSearchQuery] = useState('')
@@ -173,13 +175,11 @@ export const MessagesPage: React.FC = () => {
 
   // Modal States
   const [isChooseFriendsOpen, setIsChooseFriendsOpen] = useState(false)
-  const [isRequestsModalOpen, setIsRequestsModalOpen] = useState(false)
   const [selectedFriendIds, setSelectedFriendIds] = useState<number[]>([])
 
-  // Follow Requests
+  // Follow & Chat Requests
   const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([])
   const [requestsLoading, setRequestsLoading] = useState(false)
-  const [searchIdInput, setSearchIdInput] = useState('')
   const [toastMsg, setToastMsg] = useState('')
 
   const showToast = (msg: string) => {
@@ -278,22 +278,25 @@ export const MessagesPage: React.FC = () => {
     }
   }
 
-  // Handle Accepting a Follow Request
-  const handleAcceptRequest = async (requestId: number) => {
+  // Handle Accepting a Follow / Message Request
+  const handleAcceptRequest = async (requestId: number, senderId?: number) => {
     const token = getAuthToken()
     if (!token) return
 
     try {
       await acceptFollowRequest(requestId, token)
       setPendingRequests((prev) => prev.filter((r) => r.request_id !== requestId))
-      showToast('Follow request accepted!')
+      showToast('Request accepted! Chat room is ready.')
+      if (senderId) {
+        startOrGetChat(senderId, token).catch(() => {})
+      }
     } catch {
       setPendingRequests((prev) => prev.filter((r) => r.request_id !== requestId))
-      showToast('Follow request accepted!')
+      showToast('Request accepted!')
     }
   }
 
-  // Handle Rejecting a Follow Request
+  // Handle Rejecting a Follow / Message Request
   const handleRejectRequest = async (requestId: number) => {
     const token = getAuthToken()
     if (!token) return
@@ -305,23 +308,6 @@ export const MessagesPage: React.FC = () => {
     } catch {
       setPendingRequests((prev) => prev.filter((r) => r.request_id !== requestId))
       showToast('Request declined')
-    }
-  }
-
-  // Handle Sending a Request by User UID
-  const handleSendRequestById = async (e: React.FormEvent) => {
-    e.preventDefault()
-    const token = getAuthToken()
-    if (!token) return showToast('Please log in first')
-    if (!searchIdInput.trim()) return showToast('Please enter a User ID')
-
-    try {
-      await sendFollowRequest(searchIdInput.trim(), token)
-      showToast(`Follow request sent to ${searchIdInput}!`)
-      setSearchIdInput('')
-      setIsRequestsModalOpen(false)
-    } catch (err: any) {
-      showToast(err.message || 'Failed to send follow request')
     }
   }
 
@@ -391,8 +377,46 @@ export const MessagesPage: React.FC = () => {
     setSelectedFriendIds([])
   }
 
+  // 1. Permanent Official Platform Announcements Channel
+  const announcementsThread: ChatThread = {
+    id: 'announcements-channel',
+    name: 'Platform Announcements',
+    avatarBg: 'bg-[#00c59e]',
+    avatarInitial: '📢',
+    badgeText: 'Official',
+    badgeBg: 'bg-[#e6faf5] text-[#008f73]',
+    lastMessage: 'Welcome to UADA Play! Official events & updates.',
+    timestamp: 'Official',
+    unreadCount: 0,
+    isSystem: true,
+  }
+
+  // 2. Permanent Friend & Follow Requests Channel (dynamically synced to live requests)
+  const requestsThread: ChatThread = {
+    id: 'requests-channel',
+    name: 'Friend & Follow Requests',
+    avatarBg: 'bg-gradient-to-tr from-sky-500 to-indigo-600',
+    avatarInitial: '👥',
+    badgeText: pendingRequests.length > 0 ? `${pendingRequests.length} New` : undefined,
+    badgeBg: 'bg-rose-500 text-white',
+    lastMessage:
+      pendingRequests.length > 0
+        ? `${pendingRequests.length} pending friend request${pendingRequests.length > 1 ? 's' : ''}`
+        : 'View and manage friend & follow requests',
+    timestamp: pendingRequests.length > 0 ? 'Action' : 'Requests',
+    unreadCount: pendingRequests.length,
+    isRequests: true,
+  }
+
+  // Combined threads: Permanent System & Request channels always at top, followed by live inbox & players
+  const combinedThreads: ChatThread[] = [
+    announcementsThread,
+    requestsThread,
+    ...threads,
+  ]
+
   // Filtered threads in Message Hub
-  const filteredThreads = threads.filter((t) =>
+  const filteredThreads = combinedThreads.filter((t) =>
     t.name.toLowerCase().includes(messageSearchQuery.toLowerCase())
   )
 
@@ -442,10 +466,15 @@ export const MessagesPage: React.FC = () => {
 
   // Open Chat from Message Hub Thread
   const handleOpenThread = async (thread: ChatThread) => {
-    setActiveChat(thread)
-    setMessages([])
+    // 1. Intercept Requests Channel -> Open Friend & Follow Requests Screen directly
+    if (thread.isRequests || thread.id === 'requests-channel') {
+      setCurrentView('requests')
+      return
+    }
 
-    if (thread.isSystem) {
+    // 2. Intercept Announcements Channel -> Open Official Announcements Conversation
+    if (thread.isSystem || thread.id === 'announcements-channel') {
+      setActiveChat(thread)
       setMessages([
         {
           id: 1,
@@ -454,13 +483,27 @@ export const MessagesPage: React.FC = () => {
           receiver_id: 0,
           message_type: 'text',
           content:
-            'The tribe rocket has been launched! All rooms and users are active in real-time.',
+            '👋 Welcome to UADA Play! Official events, tournaments, and platform updates will be posted right here.',
           created_at: new Date().toISOString(),
-          sender_name: 'System Information',
+          sender_name: 'Platform Announcements',
+        },
+        {
+          id: 2,
+          chat_id: 0,
+          sender_id: 0,
+          receiver_id: 0,
+          message_type: 'text',
+          content:
+            '🚀 Live Services: Voice lobbies, Ludo boards, and real-time private messaging are online with active sync.',
+          created_at: new Date().toISOString(),
+          sender_name: 'Platform Announcements',
         },
       ])
       return
     }
+
+    setActiveChat(thread)
+    setMessages([])
 
     let token = getAuthToken()
     if (!token) {
@@ -502,6 +545,10 @@ export const MessagesPage: React.FC = () => {
   // Sending Messages in Chat View
   const handleSendMessage = async () => {
     if (!chatInput.trim() || !activeChat) return
+    if (activeChat.isSystem) {
+      showToast('Announcements channel is read-only')
+      return
+    }
     const content = chatInput.trim()
     setChatInput('')
 
@@ -588,9 +635,9 @@ export const MessagesPage: React.FC = () => {
             <h1 className="text-base font-bold text-slate-900">Friends</h1>
             <button
               type="button"
-              onClick={() => setIsRequestsModalOpen(true)}
+              onClick={() => setCurrentView('requests')}
               className="relative p-1 text-slate-800 hover:text-black cursor-pointer"
-              title="Add Friends / Follow Requests"
+              title="Message & Follow Requests"
             >
               <UserPlus className="w-5 h-5 stroke-[2]" />
               {pendingRequests.length > 0 && (
@@ -789,6 +836,8 @@ export const MessagesPage: React.FC = () => {
                         >
                           {thread.isSystem ? (
                             <Bell className="w-5 h-5 text-white fill-white" />
+                          ) : thread.isRequests ? (
+                            <UserPlus className="w-5 h-5 text-white stroke-[2.5]" />
                           ) : thread.avatarImage ? (
                             <img
                               src={thread.avatarImage}
@@ -807,9 +856,9 @@ export const MessagesPage: React.FC = () => {
                           </div>
                         )}
 
-                        {/* Unread Red Dot on Avatar (for non-system chats) */}
-                        {Boolean(thread.unreadCount && !thread.isSystem) && (
-                          <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-[#ff3b30] text-white text-[9.5px] font-bold rounded-full flex items-center justify-center">
+                        {/* Unread Red Dot on Avatar */}
+                        {Boolean(thread.unreadCount && thread.unreadCount > 0) && (
+                          <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 bg-[#ff3b30] text-white text-[9.5px] font-bold rounded-full flex items-center justify-center">
                             {thread.unreadCount}
                           </span>
                         )}
@@ -1013,7 +1062,11 @@ export const MessagesPage: React.FC = () => {
 
               {/* Bitmoji / Avatar with status ring */}
               <div className="relative w-10 h-10 rounded-full bg-[#f2f4f7] ring-2 ring-[#0099ff]/20 flex items-center justify-center shrink-0 overflow-hidden shadow-xs">
-                {activeChat.avatarImage ? (
+                {activeChat.isSystem ? (
+                  <div className="w-full h-full bg-[#00c59e] flex items-center justify-center">
+                    <Bell className="w-5 h-5 text-white fill-white" />
+                  </div>
+                ) : activeChat.avatarImage ? (
                   <img
                     src={activeChat.avatarImage}
                     alt={activeChat.name}
@@ -1030,13 +1083,24 @@ export const MessagesPage: React.FC = () => {
 
               {/* Identity & Friendship Status */}
               <div className="flex flex-col min-w-0">
-                <span className="text-[15px] font-extrabold text-slate-900 truncate max-w-[190px] leading-tight">
+                <span className="text-[15px] font-extrabold text-slate-900 truncate max-w-[190px] leading-tight flex items-center gap-1.5">
                   {activeChat.name}
+                  {activeChat.isSystem && (
+                    <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 shrink-0">
+                      Official
+                    </span>
+                  )}
                 </span>
                 <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400">
-                  <span className="text-amber-500 font-bold">🔥 14</span>
-                  <span className="text-slate-300">•</span>
-                  <span className="text-slate-400">Tap for Friendship</span>
+                  {activeChat.isSystem ? (
+                    <span className="text-emerald-600 font-medium">Verified System Channel</span>
+                  ) : (
+                    <>
+                      <span className="text-amber-500 font-bold">🔥 14</span>
+                      <span className="text-slate-300">•</span>
+                      <span className="text-slate-400">Tap for Friendship</span>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -1170,173 +1234,187 @@ export const MessagesPage: React.FC = () => {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* 3. Snapchat Signature Input Footer - Guaranteed visible anchored to bottom */}
-          <div className="px-3 py-2.5 bg-white border-t border-slate-100 flex items-center gap-2 z-20 shrink-0 shadow-[0_-2px_12px_rgba(0,0,0,0.04)]">
-            {/* Snapchat Iconic Round Camera Button */}
-            <button
-              type="button"
-              onClick={() => showToast('Snap camera opened')}
-              className="w-10 h-10 rounded-full bg-[#f2f3f5] hover:bg-[#e8eaed] active:scale-95 text-slate-800 flex items-center justify-center shrink-0 cursor-pointer shadow-2xs transition-all"
-              title="Camera"
-            >
-              <Camera className="w-5 h-5 stroke-[2] text-slate-800" />
-            </button>
-
-            {/* "Send a chat" Pill Container */}
-            <div className="flex-1 bg-[#f2f3f5] rounded-full px-4 py-2 flex items-center gap-2 border border-transparent focus-within:border-slate-200 focus-within:bg-white transition-all shadow-inner">
-              <input
-                type="text"
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                placeholder="Send a chat"
-                className="bg-transparent text-[13px] text-slate-900 placeholder-slate-400 focus:outline-none flex-1 font-normal"
-                autoFocus
-              />
-              <button
-                type="button"
-                onClick={() => setChatInput((prev) => prev + ' 😊')}
-                className="text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
-                title="Emoji"
-              >
-                <Smile className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => showToast('Photo gallery opened')}
-                className="text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
-                title="Photos"
-              >
-                <ImageIcon className="w-4 h-4" />
-              </button>
+          {/* 3. Snapchat Signature Input Footer / Official Read-Only Banner */}
+          {activeChat.isSystem ? (
+            <div className="px-4 py-3 bg-[#f8fafc] border-t border-slate-100 flex items-center justify-center gap-2 text-xs text-slate-500 font-semibold shrink-0">
+              <Lock className="w-3.5 h-3.5 text-slate-400" />
+              <span>Official announcements channel (Read-only)</span>
             </div>
-
-            {/* Action Button: Snapchat Electric Blue Send OR Voice Mic */}
-            {chatInput.trim() ? (
+          ) : (
+            <div className="px-3 py-2.5 bg-white border-t border-slate-100 flex items-center gap-2 z-20 shrink-0 shadow-[0_-2px_12px_rgba(0,0,0,0.04)]">
+              {/* Snapchat Iconic Round Camera Button */}
               <button
                 type="button"
-                onClick={handleSendMessage}
-                className="w-10 h-10 rounded-full bg-[#0099ff] hover:bg-[#0088ee] active:scale-95 text-white flex items-center justify-center shrink-0 shadow-md cursor-pointer transition-all animate-scale-up"
-                title="Send"
-              >
-                <Send className="w-4 h-4 text-white translate-x-0.5" />
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => showToast('Hold to record voice snap')}
+                onClick={() => showToast('Snap camera opened')}
                 className="w-10 h-10 rounded-full bg-[#f2f3f5] hover:bg-[#e8eaed] active:scale-95 text-slate-800 flex items-center justify-center shrink-0 cursor-pointer shadow-2xs transition-all"
-                title="Voice Snap"
+                title="Camera"
               >
-                <Mic className="w-4 h-4 text-slate-800" />
+                <Camera className="w-5 h-5 stroke-[2] text-slate-800" />
               </button>
-            )}
-          </div>
+
+              {/* "Send a chat" Pill Container */}
+              <div className="flex-1 bg-[#f2f3f5] rounded-full px-4 py-2 flex items-center gap-2 border border-transparent focus-within:border-slate-200 focus-within:bg-white transition-all shadow-inner">
+                <input
+                  type="text"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                  placeholder="Send a chat"
+                  className="bg-transparent text-[13px] text-slate-900 placeholder-slate-400 focus:outline-none flex-1 font-normal"
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  onClick={() => setChatInput((prev) => prev + ' 😊')}
+                  className="text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
+                  title="Emoji"
+                >
+                  <Smile className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => showToast('Photo gallery opened')}
+                  className="text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
+                  title="Photos"
+                >
+                  <ImageIcon className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Action Button: Snapchat Electric Blue Send OR Voice Mic */}
+              {chatInput.trim() ? (
+                <button
+                  type="button"
+                  onClick={handleSendMessage}
+                  className="w-10 h-10 rounded-full bg-[#0099ff] hover:bg-[#0088ee] active:scale-95 text-white flex items-center justify-center shrink-0 shadow-md cursor-pointer transition-all animate-scale-up"
+                  title="Send"
+                >
+                  <Send className="w-4 h-4 text-white translate-x-0.5" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => showToast('Hold to record voice snap')}
+                  className="w-10 h-10 rounded-full bg-[#f2f3f5] hover:bg-[#e8eaed] active:scale-95 text-slate-800 flex items-center justify-center shrink-0 cursor-pointer shadow-2xs transition-all"
+                  title="Voice Snap"
+                >
+                  <Mic className="w-4 h-4 text-slate-800" />
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
 
       {/* ============================================================ */}
-      {/* FRIEND & FOLLOW REQUESTS MODAL                                */}
+      {/* SCREEN 4: DEDICATED MESSAGE & FRIEND REQUESTS PAGE           */}
       {/* ============================================================ */}
-      {isRequestsModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4">
-          <div className="bg-[#0b2822] border border-emerald-600/40 rounded-3xl w-full max-w-[360px] p-5 shadow-2xl animate-scale-up space-y-4">
-            <div className="flex items-center justify-between pb-2 border-b border-emerald-800/50">
-              <div className="flex items-center gap-2 text-teal-400">
-                <UserPlus className="w-5 h-5" />
-                <h3 className="font-extrabold text-base text-white">Friend & Follow Requests</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsRequestsModalOpen(false)}
-                className="text-slate-400 hover:text-white p-1"
-              >
-                <X className="w-5 h-5" />
-              </button>
+      {currentView === 'requests' && (
+        <div className="flex-1 flex flex-col bg-white min-h-screen">
+          {/* Header Bar */}
+          <div className="px-4 py-3 flex items-center justify-between border-b border-slate-100 bg-white sticky top-0 z-10">
+            <button
+              type="button"
+              onClick={() => setCurrentView('messages')}
+              className="p-1 -ml-1 text-slate-800 hover:text-black cursor-pointer transition-colors"
+              title="Back to Messages"
+            >
+              <ChevronLeft className="w-6 h-6 stroke-[2.5]" />
+            </button>
+            <h1 className="text-base font-bold text-slate-900">Message & Friend Requests</h1>
+            <div className="w-6 flex justify-end">
+              {pendingRequests.length > 0 && (
+                <span className="w-5 h-5 bg-rose-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                  {pendingRequests.length}
+                </span>
+              )}
             </div>
+          </div>
 
-            {/* 1. Send Request by User ID / Name */}
-            <form onSubmit={handleSendRequestById} className="space-y-2">
-              <label className="block text-xs font-bold text-slate-300">
-                Send Follow Request by User ID
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={searchIdInput}
-                  onChange={(e) => setSearchIdInput(e.target.value)}
-                  placeholder="Enter User UID (e.g. G-XXXXXX-2026)"
-                  className="flex-1 bg-[#051c17] border border-emerald-700/60 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-teal-400"
-                />
-                <button
-                  type="submit"
-                  className="px-3.5 py-2 bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-400 active:scale-95 text-black font-extrabold text-xs rounded-xl shadow-md transition-all cursor-pointer"
-                >
-                  Send
-                </button>
+          {/* Subtitle Info Banner */}
+          <div className="px-4 py-3 bg-[#f8fafc] border-b border-slate-100 flex items-center gap-2.5 text-xs text-slate-500">
+            <div className="w-7 h-7 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+              <UserCheck className="w-4 h-4" />
+            </div>
+            <p className="leading-snug">
+              These players have requested to connect with you. Accepting allows direct real-time messaging.
+            </p>
+          </div>
+
+          {/* Requests Content List */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            {requestsLoading && (
+              <div className="py-20 flex flex-col items-center justify-center gap-2 text-xs text-slate-400">
+                <div className="w-5 h-5 border-2 border-[#00dfb6] border-t-transparent rounded-full animate-spin" />
+                <span>Checking for incoming requests...</span>
               </div>
-            </form>
+            )}
 
-            {/* 2. Received Pending Requests List */}
-            <div className="space-y-2 pt-1">
-              <span className="text-xs font-extrabold text-emerald-400 uppercase tracking-wide">
-                Received Requests ({pendingRequests.length})
-              </span>
-
-              {requestsLoading && (
-                <div className="py-4 text-center text-xs text-slate-400">
-                  Checking server for pending requests...
+            {!requestsLoading && pendingRequests.length === 0 && (
+              <div className="flex-1 flex flex-col items-center justify-center py-24 text-center px-4 my-auto">
+                <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mb-3 text-slate-400">
+                  <UserPlus className="w-8 h-8 text-slate-300" />
                 </div>
-              )}
+                <h3 className="text-sm font-bold text-slate-800">No Pending Requests</h3>
+                <p className="text-xs text-slate-400 mt-1 max-w-[240px]">
+                  When other players send you a request to connect or message you, they will appear here for you to accept or decline.
+                </p>
+              </div>
+            )}
 
-              {!requestsLoading && pendingRequests.length === 0 && (
-                <div className="py-6 text-center text-xs text-slate-400 bg-[#061e19] rounded-2xl border border-emerald-900/40">
-                  No pending follow requests right now.
-                </div>
-              )}
-
-              <div className="max-h-48 overflow-y-auto space-y-2 no-scrollbar">
+            {!requestsLoading && pendingRequests.length > 0 && (
+              <div className="divide-y divide-slate-100">
                 {pendingRequests.map((req) => (
                   <div
                     key={req.request_id}
-                    className="p-3 rounded-2xl bg-[#082620] border border-emerald-800/40 flex items-center justify-between shadow-xs"
+                    className="py-3 flex items-center justify-between gap-3"
                   >
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-9 h-9 rounded-full bg-emerald-900 flex items-center justify-center font-bold text-sm text-white">
-                        {req.name ? req.name.charAt(0).toUpperCase() : 'U'}
+                    {/* User Info */}
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-teal-500 to-emerald-600 flex items-center justify-center font-bold text-base text-white shrink-0 overflow-hidden shadow-xs">
+                        {req.profile_image ? (
+                          <img
+                            src={normalizeImageUrl(req.profile_image) || ''}
+                            alt={req.name || 'User'}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <span>{req.name ? req.name.charAt(0).toUpperCase() : 'U'}</span>
+                        )}
                       </div>
-                      <div>
-                        <p className="text-xs font-bold text-white">{req.name || 'UADA Player'}</p>
-                        <p className="text-[10px] text-slate-400 font-mono">
-                          {req.user_uid || `UID: ${req.sender_id}`}
-                        </p>
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-sm font-bold text-slate-900 truncate">
+                          {req.name || 'UADA Player'}
+                        </span>
+                        <span className="text-[11px] text-slate-400 font-mono truncate">
+                          ID: {req.user_uid || req.sender_id}
+                        </span>
+                        <span className="text-[10px] text-slate-400">Wants to chat with you</span>
                       </div>
                     </div>
 
-                    {/* Accept / Decline Action Buttons */}
-                    <div className="flex items-center gap-1.5">
+                    {/* Action Buttons: Accept / Decline */}
+                    <div className="flex items-center gap-2 shrink-0">
                       <button
                         type="button"
-                        onClick={() => handleAcceptRequest(req.request_id)}
-                        className="px-2.5 py-1.5 rounded-xl bg-teal-500 hover:bg-teal-400 active:scale-95 text-black font-extrabold text-xs flex items-center gap-1 shadow-xs cursor-pointer"
-                        title="Accept Request"
+                        onClick={() => handleAcceptRequest(req.request_id, req.sender_id)}
+                        className="px-4 py-1.5 rounded-full bg-[#00dfb6] hover:bg-[#00c59e] active:scale-95 text-[#06201a] font-bold text-xs shadow-xs transition-all cursor-pointer flex items-center gap-1"
                       >
-                        <Check className="w-3.5 h-3.5" />
+                        <Check className="w-3.5 h-3.5 stroke-[2.5]" />
                         <span>Accept</span>
                       </button>
                       <button
                         type="button"
                         onClick={() => handleRejectRequest(req.request_id)}
-                        className="p-1.5 rounded-xl bg-rose-950/60 hover:bg-rose-900 text-rose-300 transition-colors cursor-pointer"
-                        title="Decline"
+                        className="px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-600 font-medium text-xs transition-all cursor-pointer"
                       >
-                        <X className="w-3.5 h-3.5" />
+                        Decline
                       </button>
                     </div>
                   </div>
                 ))}
               </div>
-            </div>
+            )}
           </div>
         </div>
       )}
