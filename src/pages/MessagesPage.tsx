@@ -89,10 +89,12 @@ interface BackendMessage {
 
 interface PendingRequest {
   request_id: number
-  sender_id: number
+  sender_id?: number
+  id?: number
   user_uid?: string
   name?: string
   profile_image?: string | null
+  last_message?: string | null
   created_at?: string
 }
 
@@ -204,65 +206,146 @@ export const MessagesPage: React.FC = () => {
       Promise.all([
         viewInbox(token).catch(() => ({ chats: [] })),
         viewAllUsers(token).catch(() => ({ users: [] })),
+        viewPendingFollowRequests(token).catch(() => ({ requests: [] })),
       ])
-        .then(([inboxRes, usersRes]) => {
+        .then(([inboxRes, usersRes, requestsRes]) => {
           const usersList: RealUser[] = usersRes?.users || []
           setAllDbUsers(usersList)
 
+          const pendingList: PendingRequest[] = requestsRes?.requests || []
+          const pendingSenderIds = new Set(
+            pendingList.map((r: any) => Number(r.id || r.sender_id)).filter(Boolean)
+          )
+
           const inboxChats = inboxRes?.chats || []
 
-        // Map real inbox conversations from backend database
-        const realInboxThreads: ChatThread[] = inboxChats.map((c: any) => ({
-          id: `chat-${c.chat_id}`,
-          chatId: c.chat_id,
-          chatUid: c.chat_uid,
-          userId: c.player_id,
-          name: c.player_name || 'Player',
-          avatarInitial: c.player_name ? c.player_name.trim().charAt(0).toUpperCase() : 'U',
-          avatarImage: normalizeImageUrl(c.player_image),
-          avatarBg: 'bg-[#00c59e]',
-          lastMessage: c.last_message || 'Tap to start conversation',
-          timestamp: c.last_message_at
-            ? new Date(c.last_message_at).toLocaleTimeString([], {
-                hour: '2-digit',
-                minute: '2-digit',
-              })
-            : 'Now',
-          unreadCount: c.unread_count || 0,
-        }))
+          // Attach message preview to pending request if available
+          const chatBySenderId = new Map(inboxChats.map((c: any) => [Number(c.player_id), c]))
+          const enrichedPendingRequests = pendingList.map((r: any) => {
+            const senderId = Number(r.id || r.sender_id)
+            const chat = chatBySenderId.get(senderId)
+            return {
+              ...r,
+              sender_id: senderId,
+              last_message: chat?.last_message || null,
+            }
+          })
+          setPendingRequests(enrichedPendingRequests)
 
-        // Also add database players that aren't yet in inbox so user can immediately click and chat with them
-        const existingPlayerIds = new Set(inboxChats.map((c: any) => Number(c.player_id)))
-        const remainingPlayers: ChatThread[] = usersList
-          .filter((u) => u.user_uid !== currentUid && (!u.id || !existingPlayerIds.has(Number(u.id))))
-          .map((u, idx) => ({
-            id: `user-${u.user_uid}`,
-            userId: u.id,
-            name: u.name || 'UADA Player',
-            avatarInitial: u.name ? u.name.trim().charAt(0).toUpperCase() : 'U',
-            avatarImage: normalizeImageUrl(u.profile_image),
-            avatarBg: idx % 2 === 0 ? 'bg-[#00c59e]' : 'bg-[#3b82f6]',
-            countryFlag: u.gender === 'male' ? FlagEG : FlagSA,
-            lastMessage: `Tap to open direct chat with ${u.name || 'player'}`,
-            timestamp: 'Active',
-            unreadCount: 0,
-          }))
+          // In main inbox, show ONLY chats that are NOT pending requests from unaccepted users
+          const acceptedInboxThreads: ChatThread[] = inboxChats
+            .filter((c: any) => !pendingSenderIds.has(Number(c.player_id)))
+            .map((c: any) => ({
+              id: `chat-${c.chat_id}`,
+              chatId: c.chat_id,
+              chatUid: c.chat_uid,
+              userId: c.player_id,
+              name: c.player_name || 'Player',
+              avatarInitial: c.player_name ? c.player_name.trim().charAt(0).toUpperCase() : 'U',
+              avatarImage: normalizeImageUrl(c.player_image),
+              avatarBg: 'bg-[#00c59e]',
+              lastMessage: c.last_message || 'Tap to start conversation',
+              timestamp: c.last_message_at
+                ? new Date(c.last_message_at).toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })
+                : 'Now',
+              unreadCount: c.unread_count || 0,
+            }))
 
-        // Pure dynamic database threads from live backend API
-        setThreads([...realInboxThreads, ...remainingPlayers])
-        // Fetch pending follow requests dynamically
-        fetchPendingRequests(token)
-      })
-      .catch((err) => {
-        console.debug('Failed to fetch message contacts:', err.message)
-      })
-      .finally(() => {
-        setIsLoading(false)
-      })
+          // Set only actual active accepted conversations in the main message hub
+          setThreads(acceptedInboxThreads)
+        })
+        .catch((err) => {
+          console.debug('Failed to fetch message contacts:', err.message)
+        })
+        .finally(() => {
+          setIsLoading(false)
+        })
     }
 
     initData()
+
+    // Background periodic polling for live incoming requests and messages
+    const syncInterval = setInterval(async () => {
+      const token = getAuthToken()
+      if (!token) return
+
+      try {
+        const [inboxRes, requestsRes] = await Promise.all([
+          viewInbox(token).catch(() => ({ chats: [] })),
+          viewPendingFollowRequests(token).catch(() => ({ requests: [] })),
+        ])
+
+        const pendingList: PendingRequest[] = requestsRes?.requests || []
+        const pendingSenderIds = new Set(
+          pendingList.map((r: any) => Number(r.id || r.sender_id)).filter(Boolean)
+        )
+        const inboxChats = inboxRes?.chats || []
+
+        const chatBySenderId = new Map(inboxChats.map((c: any) => [Number(c.player_id), c]))
+        const enrichedPendingRequests = pendingList.map((r: any) => {
+          const senderId = Number(r.id || r.sender_id)
+          const chat = chatBySenderId.get(senderId)
+          return {
+            ...r,
+            sender_id: senderId,
+            last_message: chat?.last_message || null,
+          }
+        })
+        setPendingRequests(enrichedPendingRequests)
+
+        const acceptedInboxThreads: ChatThread[] = inboxChats
+          .filter((c: any) => !pendingSenderIds.has(Number(c.player_id)))
+          .map((c: any) => ({
+            id: `chat-${c.chat_id}`,
+            chatId: c.chat_id,
+            chatUid: c.chat_uid,
+            userId: c.player_id,
+            name: c.player_name || 'Player',
+            avatarInitial: c.player_name ? c.player_name.trim().charAt(0).toUpperCase() : 'U',
+            avatarImage: normalizeImageUrl(c.player_image),
+            avatarBg: 'bg-[#00c59e]',
+            lastMessage: c.last_message || 'Tap to start conversation',
+            timestamp: c.last_message_at
+              ? new Date(c.last_message_at).toLocaleTimeString([], {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })
+              : 'Now',
+            unreadCount: c.unread_count || 0,
+          }))
+
+        setThreads(acceptedInboxThreads)
+      } catch {
+        // Silent periodic background sync
+      }
+    }, 6000)
+
+    return () => clearInterval(syncInterval)
   }, [])
+
+  // Auto-sync active conversation messages in real time
+  useEffect(() => {
+    if (!activeChat?.chatId || activeChat.isSystem) return
+    const activeChatId = activeChat.chatId
+
+    const msgInterval = setInterval(async () => {
+      const token = getAuthToken()
+      if (!token) return
+      try {
+        const historyRes = await viewChatHistory(activeChatId, token)
+        if (historyRes?.messages && Array.isArray(historyRes.messages)) {
+          setMessages(historyRes.messages)
+        }
+      } catch {
+        // Silent poll
+      }
+    }, 3500)
+
+    return () => clearInterval(msgInterval)
+  }, [activeChat?.chatId, activeChat?.isSystem])
 
   const fetchPendingRequests = async (token: string) => {
     try {
@@ -272,7 +355,7 @@ export const MessagesPage: React.FC = () => {
         setPendingRequests(res.requests)
       }
     } catch {
-      // Backend column mismatch handled gracefully
+      // Handled gracefully
     } finally {
       setRequestsLoading(false)
     }
@@ -285,10 +368,39 @@ export const MessagesPage: React.FC = () => {
 
     try {
       await acceptFollowRequest(requestId, token)
+      const existingReq = pendingRequests.find((r) => r.request_id === requestId)
       setPendingRequests((prev) => prev.filter((r) => r.request_id !== requestId))
-      showToast('Request accepted! Chat room is ready.')
+      showToast('Request accepted! Conversation moved to Messages.')
+
+      // Move conversation immediately into main active inbox threads
       if (senderId) {
-        startOrGetChat(senderId, token).catch(() => {})
+        const targetUser = allDbUsers.find((u) => Number(u.id) === Number(senderId))
+        const res = await startOrGetChat(senderId, token).catch(() => null)
+        const chatId = res?.chat?.id
+        const chatUid = res?.chat?.chat_uid
+
+        const newThread: ChatThread = {
+          id: chatId ? `chat-${chatId}` : `user-${senderId}`,
+          chatId,
+          chatUid,
+          userId: senderId,
+          name: targetUser?.name || existingReq?.name || 'Player',
+          avatarInitial: targetUser?.name
+            ? targetUser.name.charAt(0).toUpperCase()
+            : existingReq?.name
+            ? existingReq.name.charAt(0).toUpperCase()
+            : 'U',
+          avatarImage: normalizeImageUrl(targetUser?.profile_image || existingReq?.profile_image),
+          avatarBg: 'bg-[#00c59e]',
+          lastMessage: existingReq?.last_message || 'Request accepted - say hello!',
+          timestamp: 'Just now',
+          unreadCount: 0,
+        }
+
+        setThreads((prev) => [
+          newThread,
+          ...prev.filter((t) => Number(t.userId) !== Number(senderId)),
+        ])
       }
     } catch {
       setPendingRequests((prev) => prev.filter((r) => r.request_id !== requestId))
@@ -786,13 +898,7 @@ export const MessagesPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Live Sync Status */}
-          {filteredThreads.length > 0 && (
-            <div className="px-4 py-1 flex items-center gap-1.5 text-xs text-slate-400">
-              <Check className="w-3.5 h-3.5 text-emerald-500 stroke-[2.5]" />
-              <span className="font-normal text-[11px] text-slate-400">Live Database Chats</span>
-            </div>
-          )}
+
 
           {/* Loading State */}
           {isLoading && (

@@ -1,0 +1,846 @@
+const express = require("express");
+const router = express.Router();
+
+const {
+    sendRequest,
+    acceptRequest,
+    rejectRequest,
+    unfollow,
+    viewPendingRequests,
+    viewFollowers,
+    viewFollowing,
+    viewFollowStats,
+    viewFollowersCount,
+    viewFollowingCount,
+    checkStatus
+} = require("../controller/UserProfile/followersController");
+
+
+const { verifyToken } = require("../middleware/jwtauthication");
+
+// =====================================================
+// FOLLOW REQUEST ROUTES
+// =====================================================
+
+// Send follow request
+// POST /api/follow/request/:userId
+router.post("/request/:userId", verifyToken, sendRequest);
+
+// Accept follow request
+// PUT /api/follow/accept/:requestId
+router.put("/accept/:requestId", verifyToken, acceptRequest);
+
+// Reject follow request (supports both DELETE and PUT for client compatibility)
+// DELETE /api/follow/reject/:requestId
+router.delete("/reject/:requestId", verifyToken, rejectRequest);
+router.put("/reject/:requestId", verifyToken, rejectRequest);
+
+// Unfollow user
+// DELETE /api/follow/:userId
+router.delete("/:userId", verifyToken, unfollow);
+
+// Get pending follow requests (received by logged-in user)
+// GET /api/follow/requests
+router.get("/requests", verifyToken, viewPendingRequests);
+
+// Get followers list (logged-in user via /my or any user via /:userId)
+// GET /api/follow/followers/my or /api/follow/followers/:userId
+router.get("/followers/my", verifyToken, viewFollowers);
+router.get("/followers/:userId", verifyToken, viewFollowers);
+
+// Get following list (logged-in user via /my or any user via /:userId)
+// GET /api/follow/following/my or /api/follow/following/:userId
+router.get("/following/my", verifyToken, viewFollowing);
+router.get("/following/:userId", verifyToken, viewFollowing);
+
+// Get follow stats (followers + following count)
+// GET /api/follow/stats/combine or /api/follow/stats/:userId
+router.get("/stats/combine", verifyToken, viewFollowStats);
+router.get("/stats/:userId", verifyToken, viewFollowStats);
+
+// Get only followers count
+// GET /api/follow/followers-count/my or /api/follow/followers-count/:userId
+router.get("/followers-count/my", verifyToken, viewFollowersCount);
+router.get("/followers-count/:userId", verifyToken, viewFollowersCount);
+
+// Get only following count
+// GET /api/follow/following-count/my or /api/follow/following-count/:userId
+router.get("/following-count/my", verifyToken, viewFollowingCount);
+router.get("/following-count/:userId", verifyToken, viewFollowingCount);
+
+// Check follow / request status between current user and target user
+// GET /api/follow/status/:userId
+router.get("/status/:userId", verifyToken, checkStatus);
+
+
+module.exports = router;
+
+
+
+
+const {
+    sendFollowRequest,
+    acceptFollowRequest,
+    rejectFollowRequest,
+    unfollowUser,
+    getPendingRequests,
+    getRequestStatus,
+    isFollowing,
+    getFollowers,
+    getFollowing,
+    getFollowersCount,
+    getFollowingCount,
+    getFollowStats
+} = require("../../module/UserProfile/followersModule");
+
+
+// =====================================================
+// 1. SEND FOLLOW REQUEST
+// POST /api/follow/request/:userId
+// =====================================================
+const sendRequest = async (req, res) => {
+    try {
+        const senderId = req.user.id;
+        const receiverId = req.params.userId;
+
+        if (senderId == receiverId) {
+            return res.status(400).json({
+                message: "You cannot send follow request to yourself"
+            });
+        }
+
+        // Check if already following
+        const alreadyFollowing = await isFollowing(senderId, receiverId);
+        if (alreadyFollowing) {
+            return res.status(400).json({
+                message: "You are already following this user"
+            });
+        }
+
+        // Check if request already exists
+        const existingStatus = await getRequestStatus(senderId, receiverId);
+        if (existingStatus === "pending") {
+            return res.status(400).json({
+                message: "Follow request already sent"
+            });
+        }
+        if (existingStatus === "accepted") {
+            return res.status(400).json({
+                message: "You are already following this user"
+            });
+        }
+
+        const result = await sendFollowRequest(senderId, receiverId);
+
+        return res.status(201).json({
+            message: "Follow request sent successfully",
+            data: result
+        });
+
+    } catch (err) {
+        console.error("sendRequest error:", err.message);
+
+        if (err.code === "23505") {
+            return res.status(400).json({
+                message: "Follow request already sent"
+            });
+        }
+
+        return res.status(500).json({
+            message: "Server error",
+            error: err.message
+        });
+    }
+};
+
+
+// =====================================================
+// 2. ACCEPT FOLLOW REQUEST
+// PUT /api/follow/accept/:requestId
+// =====================================================
+const acceptRequest = async (req, res) => {
+    try {
+        const receiverId = req.user.id;
+        const requestId = req.params.requestId;
+
+        const result = await acceptFollowRequest(requestId, receiverId);
+
+        if (!result) {
+            return res.status(404).json({
+                message: "Follow request not found or already handled"
+            });
+        }
+
+        return res.status(200).json({
+            message: "Follow request accepted successfully",
+            data: result
+        });
+
+    } catch (err) {
+        console.error("acceptRequest error:", err.message);
+        return res.status(500).json({
+            message: "Server error",
+            error: err.message
+        });
+    }
+};
+
+
+// =====================================================
+// 3. REJECT FOLLOW REQUEST
+// PUT /api/follow/reject/:requestId
+// =====================================================
+const rejectRequest = async (req, res) => {
+    try {
+        const receiverId = req.user.id;
+        const requestId = req.params.requestId;
+
+        const result = await rejectFollowRequest(requestId, receiverId);
+
+        if (!result) {
+            return res.status(404).json({
+                message: "Follow request not found or already handled"
+            });
+        }
+
+        return res.status(200).json({
+            message: "Follow request rejected successfully",
+            data: result
+        });
+
+    } catch (err) {
+        console.error("rejectRequest error:", err.message);
+        return res.status(500).json({
+            message: "Server error",
+            error: err.message
+        });
+    }
+};
+
+
+// =====================================================
+// 4. UNFOLLOW USER
+// DELETE /api/follow/:userId
+// =====================================================
+const unfollow = async (req, res) => {
+    try {
+        const followerId = req.user.id;
+        const followingId = req.params.userId;
+
+        const result = await unfollowUser(followerId, followingId);
+
+        if (!result) {
+            return res.status(404).json({
+                message: "You are not following this user"
+            });
+        }
+
+        return res.status(200).json({
+            message: "Unfollowed successfully",
+            data: result
+        });
+
+    } catch (err) {
+        console.error("unfollow error:", err.message);
+        return res.status(500).json({
+            message: "Server error",
+            error: err.message
+        });
+    }
+};
+
+
+// =====================================================
+// 5. GET PENDING FOLLOW REQUESTS
+// GET /api/follow/requests
+// =====================================================
+const viewPendingRequests = async (req, res) => {
+    try {
+        const userId = req.user.id;
+
+        const requests = await getPendingRequests(userId);
+
+        return res.status(200).json({
+            message: "Pending follow requests fetched successfully",
+            count: requests.length,
+            requests
+        });
+
+    } catch (err) {
+        console.error("viewPendingRequests error:", err.message);
+        return res.status(500).json({
+            message: "Server error",
+            error: err.message
+        });
+    }
+};
+
+
+// =====================================================
+// 6. GET FOLLOWERS LIST
+// GET /api/follow/followers/my or /api/follow/followers/:userId
+// =====================================================
+const viewFollowers = async (req, res) => {
+    try {
+        const userId = (req.params.userId && req.params.userId !== "my") ? req.params.userId : req.user.id;
+
+        const followers = await getFollowers(userId);
+
+        return res.status(200).json({
+            message: "Followers fetched successfully",
+            count: followers.length,
+            followers
+        });
+
+    } catch (err) {
+        console.error("viewFollowers error:", err.message);
+        return res.status(500).json({
+            message: "Server error",
+            error: err.message
+        });
+    }
+};
+
+
+// =====================================================
+// 7. GET FOLLOWING LIST
+// GET /api/follow/following/my or /api/follow/following/:userId
+// =====================================================
+const viewFollowing = async (req, res) => {
+    try {
+        const userId = (req.params.userId && req.params.userId !== "my") ? req.params.userId : req.user.id;
+
+        const following = await getFollowing(userId);
+
+        return res.status(200).json({
+            message: "Following list fetched successfully",
+            count: following.length,
+            following
+        });
+
+    } catch (err) {
+        console.error("viewFollowing error:", err.message);
+        return res.status(500).json({
+            message: "Server error",
+            error: err.message
+        });
+    }
+};
+
+
+// =====================================================
+// 8. GET FOLLOW STATS
+// GET /api/follow/stats/combine or /api/follow/stats/:userId
+// =====================================================
+const viewFollowStats = async (req, res) => {
+    try {
+        const userId = (req.params.userId && req.params.userId !== "combine") ? req.params.userId : req.user.id;
+
+        const stats = await getFollowStats(userId);
+
+        return res.status(200).json({
+            message: "Follow stats fetched successfully",
+            stats
+        });
+
+    } catch (err) {
+        console.error("viewFollowStats error:", err.message);
+        return res.status(500).json({
+            message: "Server error",
+            error: err.message
+        });
+    }
+};
+
+
+// =====================================================
+// 9. GET FOLLOWERS COUNT
+// GET /api/follow/followers-count/my or /api/follow/followers-count/:userId
+// =====================================================
+const viewFollowersCount = async (req, res) => {
+    try {
+        const userId = (req.params.userId && req.params.userId !== "my") ? req.params.userId : req.user.id;
+
+        const count = await getFollowersCount(userId);
+
+        return res.status(200).json({
+            message: "Followers count fetched successfully",
+            followersCount: count
+        });
+
+    } catch (err) {
+        console.error("viewFollowersCount error:", err.message);
+        return res.status(500).json({
+            message: "Server error",
+            error: err.message
+        });
+    }
+};
+
+
+// =====================================================
+// 10. GET FOLLOWING COUNT
+// GET /api/follow/following-count/my or /api/follow/following-count/:userId
+// =====================================================
+const viewFollowingCount = async (req, res) => {
+    try {
+        const userId = (req.params.userId && req.params.userId !== "my") ? req.params.userId : req.user.id;
+
+        const count = await getFollowingCount(userId);
+
+        return res.status(200).json({
+            message: "Following count fetched successfully",
+            followingCount: count
+        });
+
+    } catch (err) {
+        console.error("viewFollowingCount error:", err.message);
+        return res.status(500).json({
+            message: "Server error",
+            error: err.message
+        });
+    }
+};
+
+
+// =====================================================
+// 11. CHECK FOLLOW / REQUEST STATUS
+// GET /api/follow/status/:userId
+// =====================================================
+const checkStatus = async (req, res) => {
+    try {
+        const currentUserId = req.user.id;
+        const targetUserId = req.params.userId;
+
+        const following = await isFollowing(currentUserId, targetUserId);
+        const requestStatus = await getRequestStatus(currentUserId, targetUserId);
+
+        return res.status(200).json({
+            message: "Status fetched successfully",
+            isFollowing: following,
+            requestStatus: requestStatus   // pending / accepted / rejected / null
+        });
+
+    } catch (err) {
+        console.error("checkStatus error:", err.message);
+        return res.status(500).json({
+            message: "Server error",
+            error: err.message
+        });
+    }
+};
+
+
+module.exports = {
+    sendRequest,
+    acceptRequest,
+    rejectRequest,
+    unfollow,
+    viewPendingRequests,
+    viewFollowers,
+    viewFollowing,
+    viewFollowStats,
+    viewFollowersCount,
+    viewFollowingCount,
+    checkStatus
+};
+
+
+
+const pool = require("../../config/connection");
+
+// =====================================================
+// CREATE FOLLOW REQUESTS TABLE
+// =====================================================
+(async () => {
+    try {
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS follow_requests (
+
+                id SERIAL PRIMARY KEY,
+
+                sender_id INT NOT NULL,           -- Who sent the request
+                receiver_id INT NOT NULL,         -- Who received the request
+
+                status VARCHAR(20) DEFAULT 'pending'
+                    CHECK (status IN ('pending', 'accepted', 'rejected')),
+
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+                FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (receiver_id) REFERENCES users(id) ON DELETE CASCADE,
+
+                UNIQUE (sender_id, receiver_id),
+                CHECK (sender_id != receiver_id)
+            );
+        `);
+
+        console.log("Follow Requests table ready");
+    } catch (err) {
+        console.error("Error creating follow_requests table:", err.message);
+    }
+})();
+
+
+// =====================================================
+// CREATE FOLLOWS TABLE (Only accepted follows)
+// =====================================================
+(async () => {
+    try {
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS follows (
+
+                id SERIAL PRIMARY KEY,
+
+                follower_id INT NOT NULL,
+                following_id INT NOT NULL,
+
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+                FOREIGN KEY (follower_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (following_id) REFERENCES users(id) ON DELETE CASCADE,
+
+                UNIQUE (follower_id, following_id),
+                CHECK (follower_id != following_id)
+            );
+        `);
+
+        console.log("Follows table ready");
+    } catch (err) {
+        console.error("Error creating follows table:", err.message);
+    }
+})();
+
+
+// =====================================================
+// 1. SEND FOLLOW REQUEST
+// =====================================================
+const sendFollowRequest = async (senderId, receiverId) => {
+    try {
+        const result = await pool.query(
+            `
+            INSERT INTO follow_requests (sender_id, receiver_id, status)
+            VALUES ($1, $2, 'pending')
+            ON CONFLICT (sender_id, receiver_id)
+            DO UPDATE SET status = 'pending', updated_at = CURRENT_TIMESTAMP
+            WHERE follow_requests.status != 'accepted'
+            RETURNING *
+            `,
+            [senderId, receiverId]
+        );
+        return result.rows[0];
+    } catch (err) {
+        throw err;
+    }
+};
+
+
+// =====================================================
+// 2. ACCEPT FOLLOW REQUEST
+// =====================================================
+const acceptFollowRequest = async (requestId, receiverId) => {
+    try {
+        // First check the request
+        const request = await pool.query(
+            `
+            SELECT * FROM follow_requests
+            WHERE id = $1 AND receiver_id = $2 AND status = 'pending'
+            `,
+            [requestId, receiverId]
+        );
+
+        if (request.rows.length === 0) {
+            return null;
+        }
+
+        const { sender_id, receiver_id } = request.rows[0];
+
+        // Update request status
+        await pool.query(
+            `
+            UPDATE follow_requests
+            SET status = 'accepted', updated_at = CURRENT_TIMESTAMP
+            WHERE id = $1
+            `,
+            [requestId]
+        );
+
+        // Insert into follows table (safely avoid duplicates)
+        const follow = await pool.query(
+            `
+            INSERT INTO follows (follower_id, following_id)
+            VALUES ($1, $2)
+            ON CONFLICT (follower_id, following_id) DO NOTHING
+            RETURNING *
+            `,
+            [sender_id, receiver_id]
+        );
+
+        return follow.rows[0] || { follower_id: sender_id, following_id: receiver_id };
+    } catch (err) {
+        throw err;
+    }
+};
+
+
+// =====================================================
+// 3. REJECT FOLLOW REQUEST
+// =====================================================
+// const rejectFollowRequest = async (requestId, receiverId) => {
+//     try {
+//         const result = await pool.query(
+//             `
+//             UPDATE follow_requests
+//             SET status = 'rejected', updated_at = CURRENT_TIMESTAMP
+//             WHERE id = $1 AND receiver_id = $2 AND status = 'pending'
+//             RETURNING *
+//             `,
+//             [requestId, receiverId]
+//         );
+
+//         return result.rows[0] || null;
+//     } catch (err) {
+//         throw err;
+//     }
+// };
+
+const rejectFollowRequest = async (requestId, receiverId) => {
+    const result = await pool.query(
+        `
+        DELETE FROM follow_requests
+        WHERE id = $1 AND receiver_id = $2 AND status = 'pending'
+        RETURNING *
+        `,
+        [requestId, receiverId]
+    );
+    return result.rows[0] || null;
+};
+
+
+// =====================================================
+// 4. UNFOLLOW USER
+// =====================================================
+const unfollowUser = async (followerId, followingId) => {
+    try {
+        const result = await pool.query(
+            `
+            DELETE FROM follows
+            WHERE follower_id = $1 AND following_id = $2
+            RETURNING *
+            `,
+            [followerId, followingId]
+        );
+        return result.rows[0] || null;
+    } catch (err) {
+        throw err;
+    }
+};
+
+
+// // =====================================================
+// // 5. GET PENDING FOLLOW REQUESTS (Received)
+// // =====================================================
+// const getPendingRequests = async (userId) => {
+//     try {
+//         const result = await pool.query(
+//             `
+//             SELECT 
+//                 fr.id AS request_id,
+//                 fr.created_at,
+//                 u.id,
+//                 u.unique_id,
+//                 u.name,
+//                 u.profile_path
+//             FROM follow_requests fr
+//             JOIN users u ON u.id = fr.sender_id
+//             WHERE fr.receiver_id = $1 AND fr.status = 'pending'
+//             ORDER BY fr.created_at DESC
+//             `,
+//             [userId]
+//         );
+//         return result.rows;
+//     } catch (err) {
+//         throw err;
+//     }
+// };
+
+// =====================================================
+// 5. GET PENDING FOLLOW REQUESTS (Received)
+// =====================================================
+const getPendingRequests = async (userId) => {
+    try {
+        const result = await pool.query(
+            `
+            SELECT 
+                fr.id AS request_id,
+                fr.created_at,
+                u.id,
+                u.user_uid AS unique_id,
+                u.name,
+                u.profile_image
+            FROM follow_requests fr
+            JOIN users u ON u.id = fr.sender_id
+            WHERE fr.receiver_id = $1 AND fr.status = 'pending'
+            ORDER BY fr.created_at DESC
+            `,
+            [userId]
+        );
+        return result.rows;
+    } catch (err) {
+        throw err;
+    }
+};
+
+
+// =====================================================
+// 6. CHECK REQUEST STATUS
+// =====================================================
+const getRequestStatus = async (senderId, receiverId) => {
+    try {
+        const result = await pool.query(
+            `
+            SELECT status FROM follow_requests
+            WHERE sender_id = $1 AND receiver_id = $2
+            `,
+            [senderId, receiverId]
+        );
+        return result.rows[0]?.status || null;
+    } catch (err) {
+        throw err;
+    }
+};
+
+
+// =====================================================
+// 7. CHECK IF ALREADY FOLLOWING
+// =====================================================
+const isFollowing = async (followerId, followingId) => {
+    try {
+        const result = await pool.query(
+            `
+            SELECT id FROM follows
+            WHERE follower_id = $1 AND following_id = $2
+            `,
+            [followerId, followingId]
+        );
+        return result.rows.length > 0;
+    } catch (err) {
+        throw err;
+    }
+};
+
+
+// =====================================================
+// 8. GET FOLLOWERS
+// =====================================================
+const getFollowers = async (userId) => {
+    try {
+        const result = await pool.query(
+            `
+            SELECT 
+                u.id,
+                u.user_uid AS unique_id,
+                u.name,
+                u.profile_image,
+                f.created_at AS followed_at
+            FROM follows f
+            JOIN users u ON u.id = f.follower_id
+            WHERE f.following_id = $1
+            ORDER BY f.created_at DESC
+            `,
+            [userId]
+        );
+        return result.rows;
+    } catch (err) {
+        throw err;
+    }
+};
+
+// =====================================================
+// 9. GET FOLLOWING
+// =====================================================
+const getFollowing = async (userId) => {
+    try {
+        const result = await pool.query(
+            `
+            SELECT 
+                u.id,
+                u.user_uid AS unique_id,
+                u.name,
+                u.profile_image,
+                f.created_at AS followed_at
+            FROM follows f
+            JOIN users u ON u.id = f.following_id
+            WHERE f.follower_id = $1
+            ORDER BY f.created_at DESC
+            `,
+            [userId]
+        );
+        return result.rows;
+    } catch (err) {
+        throw err;
+    }
+};
+
+
+// =====================================================
+// 10. GET FOLLOWERS COUNT
+// =====================================================
+const getFollowersCount = async (userId) => {
+    try {
+        const result = await pool.query(
+            `SELECT COUNT(*) AS count FROM follows WHERE following_id = $1`,
+            [userId]
+        );
+        return parseInt(result.rows[0].count);
+    } catch (err) {
+        throw err;
+    }
+};
+
+
+// =====================================================
+// 11. GET FOLLOWING COUNT
+// =====================================================
+const getFollowingCount = async (userId) => {
+    try {
+        const result = await pool.query(
+            `SELECT COUNT(*) AS count FROM follows WHERE follower_id = $1`,
+            [userId]
+        );
+        return parseInt(result.rows[0].count);
+    } catch (err) {
+        throw err;
+    }
+};
+
+
+// =====================================================
+// 12. GET FOLLOW STATS
+// =====================================================
+const getFollowStats = async (userId) => {
+    try {
+        const followers = await getFollowersCount(userId);
+        const following = await getFollowingCount(userId);
+        return { followers, following };
+    } catch (err) {
+        throw err;
+    }
+};
+
+
+module.exports = {
+    sendFollowRequest,
+    acceptFollowRequest,
+    rejectFollowRequest,
+    unfollowUser,
+    getPendingRequests,
+    getRequestStatus,
+    isFollowing,
+    getFollowers,
+    getFollowing,
+    getFollowersCount,
+    getFollowingCount,
+    getFollowStats
+};

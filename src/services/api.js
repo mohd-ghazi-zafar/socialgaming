@@ -346,11 +346,11 @@ export async function acceptFollowRequest(requestId, token) {
 
 /**
  * Reject a received follow request
- * PUT /api/follow/reject/:requestId
+ * DELETE /api/follow/reject/:requestId
  */
 export async function rejectFollowRequest(requestId, token) {
   const res = await fetch(`${FOLLOW_BASE_URL}/reject/${requestId}`, {
-    method: 'PUT',
+    method: 'DELETE',
     headers: { ...authHeader(token) },
   })
 
@@ -391,7 +391,7 @@ export async function viewPendingFollowRequests(token) {
 
     const data = await res.json().catch(() => ({}))
     if (!res.ok) {
-      console.warn(`[API] /api/follow/requests responded with ${res.status} (pending backend fix):`, data.message)
+      console.warn(`[API] /api/follow/requests responded with ${res.status}:`, data.message)
       return { success: false, requests: [] }
     }
     return data
@@ -402,11 +402,11 @@ export async function viewPendingFollowRequests(token) {
 }
 
 /**
- * Get followers list for a user
- * GET /api/follow/followers/:userId
+ * Get followers list for logged-in user
+ * GET /api/follow/followers/my
  */
-export async function viewFollowers(userId, token) {
-  const res = await fetch(`${FOLLOW_BASE_URL}/followers/${userId}`, {
+export async function viewFollowers(token) {
+  const res = await fetch(`${FOLLOW_BASE_URL}/followers/my`, {
     method: 'GET',
     headers: { ...authHeader(token) },
   })
@@ -419,11 +419,11 @@ export async function viewFollowers(userId, token) {
 }
 
 /**
- * Get following list for a user
- * GET /api/follow/following/:userId
+ * Get following list for logged-in user
+ * GET /api/follow/following/my
  */
-export async function viewFollowing(userId, token) {
-  const res = await fetch(`${FOLLOW_BASE_URL}/following/${userId}`, {
+export async function viewFollowing(token) {
+  const res = await fetch(`${FOLLOW_BASE_URL}/following/my`, {
     method: 'GET',
     headers: { ...authHeader(token) },
   })
@@ -437,10 +437,10 @@ export async function viewFollowing(userId, token) {
 
 /**
  * Get follow stats (followers + following count)
- * GET /api/follow/stats/:userId
+ * GET /api/follow/stats/combine
  */
-export async function viewFollowStats(userId, token) {
-  const res = await fetch(`${FOLLOW_BASE_URL}/stats/${userId}`, {
+export async function viewFollowStats(token) {
+  const res = await fetch(`${FOLLOW_BASE_URL}/stats/combine`, {
     method: 'GET',
     headers: { ...authHeader(token) },
   })
