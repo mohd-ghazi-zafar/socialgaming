@@ -18,6 +18,9 @@ import {
   Bell,
   User,
   UserCheck,
+  Pin,
+  Trash2,
+  SmilePlus,
 } from 'lucide-react'
 import {
   viewAllUsers,
@@ -36,7 +39,17 @@ import {
   markChatAsRead,
   reactToChatMessage,
   removeChatMessage,
+  pinChatMessage,
 } from '../services/api'
+import {
+  getChatSocket,
+  connectChatUser,
+  joinChatRoom,
+  leaveChatRoom,
+  emitTyping,
+  emitStopTyping,
+  emitMarkRead,
+} from '../services/chatSocket'
 import { FlagEG, FlagSA } from '../components/common/SvgIcons'
 
 interface RealUser {
@@ -83,8 +96,15 @@ interface BackendMessage {
   file_name?: string | null
   reactions?: Record<string, string>
   status?: string
+  read_at?: string | null
+  is_edited?: boolean
+  is_pinned?: boolean
+  is_deleted_for_everyone?: boolean
+  reply_to_message_id?: number | null
+  reply_content?: string | null
   created_at?: string
   sender_name?: string
+  sender_image?: string | null
 }
 
 interface PendingRequest {
@@ -168,6 +188,11 @@ export const MessagesPage: React.FC = () => {
   const [messages, setMessages] = useState<BackendMessage[]>([])
   const messagesEndRef = React.useRef<HTMLDivElement>(null)
 
+  // Real-time Chat States (Socket.IO + 04_files)
+  const [isOtherTyping, setIsOtherTyping] = useState(false)
+  const [activeMessageActionId, setActiveMessageActionId] = useState<number | null>(null)
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
   // Auto-scroll chat to latest message
   useEffect(() => {
     if (activeChat) {
@@ -188,6 +213,148 @@ export const MessagesPage: React.FC = () => {
     setToastMsg(msg)
     setTimeout(() => setToastMsg(''), 2500)
   }
+
+  // Socket.IO Global Registration & Real-time Inbox Updates
+  useEffect(() => {
+    const currentUserId = getStoredAuth()?.user?.id
+    if (currentUserId) {
+      connectChatUser(currentUserId)
+    }
+
+    const socket = getChatSocket()
+
+    const handleInboxUpdated = (payload: any) => {
+      if (!payload) return
+      const { chat_id, message } = payload
+      if (message) {
+        setThreads((prev) => {
+          const idx = prev.findIndex((t) => t.chatId === chat_id)
+          if (idx !== -1) {
+            const updated = [...prev]
+            updated[idx] = {
+              ...updated[idx],
+              lastMessage: message.content || 'Media message',
+              timestamp: 'Now',
+              unreadCount: (updated[idx].unreadCount || 0) + 1,
+            }
+            return updated
+          }
+          return prev
+        })
+      }
+    }
+
+    socket.on('inbox_updated', handleInboxUpdated)
+
+    return () => {
+      socket.off('inbox_updated', handleInboxUpdated)
+    }
+  }, [])
+
+  // Socket.IO Active Conversation Real-time Listeners (04_files socket engine)
+  useEffect(() => {
+    if (!activeChat?.chatId || activeChat.isSystem) return
+    const activeChatId = activeChat.chatId
+    const currentUserId = getStoredAuth()?.user?.id
+
+    joinChatRoom(activeChatId)
+
+    if (currentUserId) {
+      emitMarkRead(activeChatId, currentUserId)
+    }
+
+    const socket = getChatSocket()
+
+    // 1. New Message received in active chat room
+    const handleNewMessage = (newMsg: BackendMessage) => {
+      if (Number(newMsg.chat_id) === Number(activeChatId)) {
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === newMsg.id)) return prev
+          return [...prev, newMsg]
+        })
+        if (currentUserId && Number(newMsg.sender_id) !== Number(currentUserId)) {
+          emitMarkRead(activeChatId, currentUserId)
+        }
+      }
+    }
+
+    // 2. Typing Indicators
+    const handleUserTyping = (data: { chat_id: number; sender_id: number }) => {
+      if (Number(data.chat_id) === Number(activeChatId) && currentUserId && Number(data.sender_id) !== Number(currentUserId)) {
+        setIsOtherTyping(true)
+      }
+    }
+
+    const handleUserStopTyping = (data: { chat_id: number; sender_id: number }) => {
+      if (Number(data.chat_id) === Number(activeChatId)) {
+        setIsOtherTyping(false)
+      }
+    }
+
+    // 3. Messages Read Receipts
+    const handleMessagesRead = (data: { chat_id: number; reader_id: number; read_message_ids: number[] }) => {
+      if (Number(data.chat_id) === Number(activeChatId) && data.read_message_ids?.length) {
+        const idSet = new Set(data.read_message_ids)
+        setMessages((prev) =>
+          prev.map((m) => (idSet.has(m.id) ? { ...m, status: 'read' } : m))
+        )
+      }
+    }
+
+    // 4. Message Reaction Updated
+    const handleMessageReacted = (data: { message_id: number; reactions: Record<string, string> }) => {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === data.message_id ? { ...m, reactions: data.reactions } : m))
+      )
+    }
+
+    // 5. Message Edited
+    const handleMessageEdited = (updatedMsg: BackendMessage) => {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === updatedMsg.id ? { ...m, ...updatedMsg } : m))
+      )
+    }
+
+    // 6. Message Deleted
+    const handleMessageDeleted = (data: { message_id: number; chat_id: number }) => {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === data.message_id
+            ? { ...m, content: 'This message was deleted', is_deleted_for_everyone: true }
+            : m
+        )
+      )
+    }
+
+    // 7. Message Pinned / Unpinned
+    const handleMessagePinned = (data: { message_id: number; is_pinned: boolean }) => {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === data.message_id ? { ...m, is_pinned: data.is_pinned } : m))
+      )
+    }
+
+    socket.on('new_message', handleNewMessage)
+    socket.on('user_typing', handleUserTyping)
+    socket.on('user_stop_typing', handleUserStopTyping)
+    socket.on('messages_read', handleMessagesRead)
+    socket.on('message_reacted', handleMessageReacted)
+    socket.on('message_edited', handleMessageEdited)
+    socket.on('message_deleted', handleMessageDeleted)
+    socket.on('message_pinned', handleMessagePinned)
+
+    return () => {
+      leaveChatRoom(activeChatId)
+      setIsOtherTyping(false)
+      socket.off('new_message', handleNewMessage)
+      socket.off('user_typing', handleUserTyping)
+      socket.off('user_stop_typing', handleUserStopTyping)
+      socket.off('messages_read', handleMessagesRead)
+      socket.off('message_reacted', handleMessageReacted)
+      socket.off('message_edited', handleMessageEdited)
+      socket.off('message_deleted', handleMessageDeleted)
+      socket.off('message_pinned', handleMessagePinned)
+    }
+  }, [activeChat?.chatId, activeChat?.isSystem])
 
   // Fetch real users, real inbox, and follow requests from backend
   useEffect(() => {
@@ -654,6 +821,89 @@ export const MessagesPage: React.FC = () => {
     }
   }
 
+  // Input Change with Real-time Typing Indicator
+  const handleInputChange = (text: string) => {
+    setChatInput(text)
+    if (activeChat?.chatId) {
+      const currentUserId = getStoredAuth()?.user?.id
+      if (currentUserId) {
+        emitTyping(activeChat.chatId, currentUserId)
+        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
+        typingTimeoutRef.current = setTimeout(() => {
+          if (activeChat?.chatId) {
+            emitStopTyping(activeChat.chatId, currentUserId)
+          }
+        }, 2000)
+      }
+    }
+  }
+
+  // React to a Message with Emoji (04_files reactToMessage)
+  const handleReactToMessage = async (messageId: number, emoji: string) => {
+    let token = getAuthToken()
+    if (!token) token = await ensureActiveAuthToken()
+    if (!token) return
+
+    try {
+      const res = await reactToChatMessage(messageId, emoji, token)
+      if (res?.data) {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === messageId ? { ...m, reactions: res.data.reactions } : m))
+        )
+      }
+      setActiveMessageActionId(null)
+    } catch {
+      showToast('Could not update reaction')
+    }
+  }
+
+  // Pin / Unpin Message (04_files pinChatMessage)
+  const handleTogglePin = async (messageId: number) => {
+    let token = getAuthToken()
+    if (!token) token = await ensureActiveAuthToken()
+    if (!token) return
+
+    try {
+      const res = await pinChatMessage(messageId, token)
+      if (res?.data) {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === messageId ? { ...m, is_pinned: res.data.is_pinned } : m))
+        )
+        showToast(res.data.is_pinned ? 'Message pinned 📌' : 'Message unpinned')
+      }
+      setActiveMessageActionId(null)
+    } catch {
+      showToast('Could not pin message')
+    }
+  }
+
+  // Delete Message for Me or Everyone (04_files removeChatMessage)
+  const handleDeleteMessage = async (messageId: number, forEveryone: boolean) => {
+    let token = getAuthToken()
+    if (!token) token = await ensureActiveAuthToken()
+    if (!token) return
+
+    try {
+      await removeChatMessage(messageId, forEveryone, token)
+      if (forEveryone) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === messageId
+              ? { ...m, content: 'This message was deleted', is_deleted_for_everyone: true }
+              : m
+          )
+        )
+        showToast('Message deleted for everyone')
+      } else {
+        setMessages((prev) => prev.filter((m) => m.id !== messageId))
+        showToast('Message deleted for you')
+      }
+      setActiveMessageActionId(null)
+    } catch {
+      showToast('Could not delete message')
+    }
+  }
+
   // Sending Messages in Chat View
   const handleSendMessage = async () => {
     if (!chatInput.trim() || !activeChat) return
@@ -671,6 +921,10 @@ export const MessagesPage: React.FC = () => {
 
     const currentUserId = getStoredAuth()?.user?.id || 1
 
+    if (activeChat.chatId) {
+      emitStopTyping(activeChat.chatId, currentUserId)
+    }
+
     try {
       let chatId = activeChat.chatId
       if (!chatId && activeChat.userId && token) {
@@ -687,9 +941,17 @@ export const MessagesPage: React.FC = () => {
       }
 
       if (chatId && token) {
+        // Ensure follow/message request is registered on backend for recipient so it lands in recipient's Requests if not already accepted/connected
+        if (activeChat.userId && Number(activeChat.userId) !== Number(currentUserId)) {
+          sendFollowRequest(activeChat.userId, token).catch(() => {})
+        }
+
         const res = await sendChatMessage(chatId, { message_type: 'text', content }, token)
         if (res?.data) {
-          setMessages((prev) => [...prev, res.data])
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === res.data.id)) return prev
+            return [...prev, res.data]
+          })
           // Update thread list preview
           setThreads((prev) =>
             prev.map((t) =>
@@ -1200,6 +1462,10 @@ export const MessagesPage: React.FC = () => {
                 <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400">
                   {activeChat.isSystem ? (
                     <span className="text-emerald-600 font-medium">Verified System Channel</span>
+                  ) : isOtherTyping ? (
+                    <span className="text-emerald-500 font-bold flex items-center gap-1 animate-pulse">
+                      typing...
+                    </span>
                   ) : (
                     <>
                       <span className="text-amber-500 font-bold">🔥 14</span>
@@ -1226,6 +1492,29 @@ export const MessagesPage: React.FC = () => {
 
           {/* 2. Snapchat Messages Canvas */}
           <div className="flex-1 min-h-0 p-3.5 overflow-y-auto space-y-3 bg-white overscroll-contain">
+            {/* Pinned Message Banner (04_files) */}
+            {(() => {
+              const pinnedMsg = messages.find((m) => m.is_pinned && !m.is_deleted_for_everyone)
+              if (!pinnedMsg) return null
+              return (
+                <div className="w-full flex items-center justify-between px-3 py-1.5 bg-amber-50/90 border border-amber-200/80 rounded-xl shadow-2xs mb-1 animate-fade-in">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <Pin className="w-3.5 h-3.5 text-amber-600 fill-amber-500 shrink-0" />
+                    <span className="text-[11px] font-bold text-amber-900 shrink-0">Pinned:</span>
+                    <span className="text-[11px] text-amber-800 truncate font-medium">
+                      {pinnedMsg.content}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleTogglePin(pinnedMsg.id)}
+                    className="text-[10px] font-bold text-amber-700 hover:text-amber-900 ml-2 shrink-0 cursor-pointer"
+                  >
+                    Unpin
+                  </button>
+                </div>
+              )
+            })()}
             {/* Encryption notice */}
             <div className="w-full flex justify-center my-1">
               <div className="bg-[#f8f9fa] border border-slate-100 px-3 py-1 rounded-full text-[10px] text-slate-500 font-medium flex items-center gap-1.5 shadow-2xs">
@@ -1288,11 +1577,12 @@ export const MessagesPage: React.FC = () => {
                     minute: '2-digit',
                   })
                 : 'Now'
+              const isActionOpen = activeMessageActionId === m.id
 
               return (
                 <div
                   key={m.id || idx}
-                  className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} my-1`}
+                  className={`relative flex flex-col ${isMe ? 'items-end' : 'items-start'} my-1.5`}
                 >
                   {/* Sender Name tag in Snapchat signature colors */}
                   <span
@@ -1305,16 +1595,96 @@ export const MessagesPage: React.FC = () => {
 
                   {/* Message Bubble */}
                   <div
-                    className={`max-w-[82%] px-3.5 py-2.5 rounded-2xl text-[13.5px] leading-relaxed shadow-xs break-words ${
-                      isMe
+                    onClick={() => setActiveMessageActionId(isActionOpen ? null : m.id)}
+                    className={`relative max-w-[82%] px-3.5 py-2.5 rounded-2xl text-[13.5px] leading-relaxed shadow-xs break-words cursor-pointer transition-transform active:scale-[0.99] ${
+                      m.is_deleted_for_everyone
+                        ? 'bg-slate-100 text-slate-400 italic rounded-2xl'
+                        : isMe
                         ? 'bg-[#0099ff] text-white rounded-tr-xs font-normal'
                         : 'bg-[#f2f3f5] text-slate-900 rounded-tl-xs font-normal'
                     }`}
                   >
+                    {m.is_pinned && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-300 mr-1.5">
+                        <Pin className="w-3 h-3 fill-amber-300" />
+                      </span>
+                    )}
                     <p>{text}</p>
                   </div>
 
-                  {/* Snapchat-style status indicator */}
+                  {/* Floating Emoji Reactions & Actions Menu (04_files) */}
+                  {isActionOpen && !m.is_deleted_for_everyone && (
+                    <div
+                      className={`absolute z-30 -top-10 ${
+                        isMe ? 'right-0' : 'left-0'
+                      } bg-white border border-slate-200/90 rounded-full px-2 py-1 shadow-lg flex items-center gap-1.5 animate-scale-up`}
+                    >
+                      {['❤️', '😂', '🔥', '👍', '😮', '😢'].map((emoji) => (
+                        <button
+                          key={emoji}
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleReactToMessage(m.id, emoji)
+                          }}
+                          className="hover:scale-125 transition-transform text-sm p-1 cursor-pointer"
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+
+                      <div className="w-[1px] h-4 bg-slate-200 mx-0.5" />
+
+                      {/* Pin Button */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleTogglePin(m.id)
+                        }}
+                        className="p-1 hover:text-amber-500 text-slate-400 cursor-pointer"
+                        title={m.is_pinned ? 'Unpin' : 'Pin'}
+                      >
+                        <Pin className="w-3.5 h-3.5" />
+                      </button>
+
+                      {/* Delete Button */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleDeleteMessage(m.id, isMe)
+                        }}
+                        className="p-1 hover:text-rose-500 text-slate-400 cursor-pointer"
+                        title={isMe ? 'Delete for everyone' : 'Delete for me'}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Message Reactions Pills */}
+                  {m.reactions && Object.keys(m.reactions).length > 0 && (
+                    <div className={`flex flex-wrap gap-1 mt-1 ${isMe ? 'justify-end pr-1' : 'justify-start pl-1'}`}>
+                      {Object.entries(
+                        Object.values(m.reactions).reduce((acc: Record<string, number>, em: string) => {
+                          acc[em] = (acc[em] || 0) + 1
+                          return acc
+                        }, {})
+                      ).map(([em, cnt]) => (
+                        <span
+                          key={em}
+                          onClick={() => handleReactToMessage(m.id, em)}
+                          className="inline-flex items-center gap-1 px-1.5 py-0.2 bg-white border border-slate-200 rounded-full text-[11px] shadow-2xs cursor-pointer hover:scale-105 transition-transform"
+                        >
+                          <span>{em}</span>
+                          {cnt > 1 && <span className="text-[9px] font-bold text-slate-600">{cnt}</span>}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Snapchat-style status indicator with Blue Ticks / Read status */}
                   <div
                     className={`flex items-center gap-1 text-[10px] text-slate-400 mt-1 font-medium ${
                       isMe ? 'pr-1' : 'pl-1'
@@ -1322,8 +1692,10 @@ export const MessagesPage: React.FC = () => {
                   >
                     {isMe ? (
                       <>
-                        <span className="text-[#0099ff] text-[9px] font-black">▶</span>
-                        <span>Delivered</span>
+                        <span className={`text-[9px] font-black ${m.status === 'read' ? 'text-[#0099ff]' : 'text-slate-400'}`}>
+                          {m.status === 'read' ? '✓✓' : '▶'}
+                        </span>
+                        <span>{m.status === 'read' ? 'Opened' : 'Delivered'}</span>
                       </>
                     ) : (
                       <>
@@ -1363,7 +1735,7 @@ export const MessagesPage: React.FC = () => {
                 <input
                   type="text"
                   value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
+                  onChange={(e) => handleInputChange(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
                   placeholder="Send a chat"
                   className="bg-transparent text-[13px] text-slate-900 placeholder-slate-400 focus:outline-none flex-1 font-normal"
@@ -1495,7 +1867,13 @@ export const MessagesPage: React.FC = () => {
                         <span className="text-[11px] text-slate-400 font-mono truncate">
                           ID: {req.user_uid || req.sender_id}
                         </span>
-                        <span className="text-[10px] text-slate-400">Wants to chat with you</span>
+                        {req.last_message ? (
+                          <p className="text-xs text-slate-700 truncate mt-0.5 font-semibold bg-slate-50 px-2 py-0.5 rounded border border-slate-100">
+                            💬 "{req.last_message}"
+                          </p>
+                        ) : (
+                          <span className="text-[10px] text-slate-400">Wants to chat with you</span>
+                        )}
                       </div>
                     </div>
 
