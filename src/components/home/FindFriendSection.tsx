@@ -3,13 +3,21 @@ import {
   viewAllUsers,
   viewFollowing,
   viewFollowers,
+  viewInbox,
   sendFollowRequest,
   getAuthToken,
   getStoredAuth,
+  parseJwt,
   normalizeImageUrl,
 } from '../../services/api'
+import {
+  getChatSocket,
+  connectChatUser,
+  subscribeToOnlineUsers,
+  getOnlineUserIds,
+} from '../../services/chatSocket'
 import { UserPlus, Users, Search, Check, X } from 'lucide-react'
-import { FlagUS, FlagSA, FlagBH, FlagFR, FlagEG } from '../common/SvgIcons'
+import { FlagUS, FlagSA, FlagBH } from '../common/SvgIcons'
 
 interface FindFriendSectionProps {
   onJoinRoom: (roomId: string) => void
@@ -32,6 +40,32 @@ const DEFAULT_AVATARS = [
   '/toptop/avatar_fahad.png',
 ]
 
+/**
+ * Extracts all identifiers of the logged-in user to guarantee they never appear in discovery
+ */
+function getSelfIdentifiers(token: string | null, storedAuth: any) {
+  const ids = new Set<number>()
+  const uids = new Set<string>()
+  const names = new Set<string>()
+
+  if (storedAuth?.user?.id) ids.add(Number(storedAuth.user.id))
+  if (storedAuth?.user?.user_uid) uids.add(String(storedAuth.user.user_uid).trim().toLowerCase())
+  if (storedAuth?.unique_id) uids.add(String(storedAuth.unique_id).trim().toLowerCase())
+  if (storedAuth?.user?.unique_id) uids.add(String(storedAuth.user.unique_id).trim().toLowerCase())
+  if (storedAuth?.user?.name) names.add(String(storedAuth.user.name).trim().toLowerCase())
+
+  if (token) {
+    const parsed = parseJwt(token)
+    if (parsed) {
+      if (parsed.id) ids.add(Number(parsed.id))
+      if (parsed.user_uid) uids.add(String(parsed.user_uid).trim().toLowerCase())
+      if (parsed.unique_id) uids.add(String(parsed.unique_id).trim().toLowerCase())
+      if (parsed.name) names.add(String(parsed.name).trim().toLowerCase())
+    }
+  }
+  return { ids, uids, names }
+}
+
 export const FindFriendSection: React.FC<FindFriendSectionProps> = ({ onJoinRoom }) => {
   // Navigation tabs: 'friends' (User's Friends list) or 'all' (Directory to discover & send requests)
   const [activeTab, setActiveTab] = useState<'friends' | 'all'>('friends')
@@ -39,7 +73,10 @@ export const FindFriendSection: React.FC<FindFriendSectionProps> = ({ onJoinRoom
   const [friends, setFriends] = useState<RealUser[]>([])
   const [allUsers, setAllUsers] = useState<RealUser[]>([])
   const [existingFriendIds, setExistingFriendIds] = useState<Set<number>>(new Set())
+  const [existingFriendUids, setExistingFriendUids] = useState<Set<string>>(new Set())
+  const [existingFriendNames, setExistingFriendNames] = useState<Set<string>>(new Set())
   const [sentRequestIds, setSentRequestIds] = useState<Set<number>>(new Set())
+  const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(() => getOnlineUserIds())
 
   const [searchQuery, setSearchQuery] = useState('')
   const [isLoading, setIsLoading] = useState(true)
@@ -51,9 +88,26 @@ export const FindFriendSection: React.FC<FindFriendSectionProps> = ({ onJoinRoom
     setTimeout(() => setToastMsg(''), 2500)
   }
 
+  // Real-time Socket.IO Online Presence Subscription
+  useEffect(() => {
+    const currentUserId = getStoredAuth()?.user?.id
+    if (currentUserId) {
+      connectChatUser(currentUserId)
+    }
+
+    // Subscribe to continuous live updates from WebSocket
+    const unsubscribe = subscribeToOnlineUsers((onlineIds) => {
+      setOnlineUserIds(onlineIds)
+    })
+
+    return () => {
+      unsubscribe()
+    }
+  }, [])
+
   const loadData = async () => {
     const token = getAuthToken()
-    const currentUid = getStoredAuth()?.unique_id || getStoredAuth()?.user?.user_uid
+    const storedAuth = getStoredAuth()
 
     if (!token) {
       setIsLoading(false)
@@ -61,27 +115,69 @@ export const FindFriendSection: React.FC<FindFriendSectionProps> = ({ onJoinRoom
     }
 
     try {
-      const [allUsersRes, followingRes, followersRes] = await Promise.all([
+      const [allUsersRes, followingRes, followersRes, inboxRes] = await Promise.all([
         viewAllUsers(token).catch(() => ({ users: [] })),
         viewFollowing(token).catch(() => ({ following: [] })),
         viewFollowers(token).catch(() => ({ followers: [] })),
+        viewInbox(token).catch(() => ({ chats: [] })),
       ])
 
       const rawUsers: RealUser[] = allUsersRes?.users || []
-      const others = rawUsers.filter((u: any) => u.user_uid !== currentUid)
+
+      // Identify logged-in user completely so they never appear in the discover list
+      const self = getSelfIdentifiers(token, storedAuth)
+      const others = rawUsers.filter((u: any) => {
+        if (u.id && self.ids.has(Number(u.id))) return false
+        if (u.user_uid && self.uids.has(String(u.user_uid).trim().toLowerCase())) return false
+        if (u.unique_id && self.uids.has(String(u.unique_id).trim().toLowerCase())) return false
+        if (u.name && self.names.has(String(u.name).trim().toLowerCase()) && self.ids.has(Number(u.id))) return false
+        return true
+      })
       setAllUsers(others)
 
       const followingList = followingRes?.following || []
       const followersList = followersRes?.followers || []
+      const inboxChats = inboxRes?.chats || []
 
+      // Build comprehensive friend identifiers from followers, following, and active chats
       const friendIdSet = new Set<number>()
-      followingList.forEach((f: any) => friendIdSet.add(Number(f.id)))
-      followersList.forEach((f: any) => friendIdSet.add(Number(f.id)))
+      const friendUidSet = new Set<string>()
+      const friendNameSet = new Set<string>()
+
+      followingList.forEach((f: any) => {
+        if (f.id) friendIdSet.add(Number(f.id))
+        if (f.following_id) friendIdSet.add(Number(f.following_id))
+        if (f.unique_id) friendUidSet.add(String(f.unique_id).toLowerCase())
+        if (f.user_uid) friendUidSet.add(String(f.user_uid).toLowerCase())
+        if (f.name) friendNameSet.add(String(f.name).toLowerCase())
+      })
+
+      followersList.forEach((f: any) => {
+        if (f.id) friendIdSet.add(Number(f.id))
+        if (f.follower_id) friendIdSet.add(Number(f.follower_id))
+        if (f.unique_id) friendUidSet.add(String(f.unique_id).toLowerCase())
+        if (f.user_uid) friendUidSet.add(String(f.user_uid).toLowerCase())
+        if (f.name) friendNameSet.add(String(f.name).toLowerCase())
+      })
+
+      inboxChats.forEach((c: any) => {
+        if (c.player_id) friendIdSet.add(Number(c.player_id))
+        if (c.player_uid) friendUidSet.add(String(c.player_uid).toLowerCase())
+        if (c.player_name) friendNameSet.add(String(c.player_name).toLowerCase())
+      })
 
       setExistingFriendIds(friendIdSet)
+      setExistingFriendUids(friendUidSet)
+      setExistingFriendNames(friendNameSet)
 
       // Map friends with enriched user details
-      const matchedFriends = others.filter((u) => friendIdSet.has(Number(u.id)))
+      const matchedFriends = others.filter((u) => {
+        return (
+          friendIdSet.has(Number(u.id)) ||
+          (u.user_uid && friendUidSet.has(String(u.user_uid).toLowerCase())) ||
+          (u.name && friendNameSet.has(String(u.name).toLowerCase()))
+        )
+      })
       setFriends(matchedFriends)
     } catch (err: any) {
       console.debug('Failed to fetch users in FindFriendSection:', err.message)
@@ -101,16 +197,36 @@ export const FindFriendSection: React.FC<FindFriendSectionProps> = ({ onJoinRoom
 
     setSendingId(targetUser.id)
     try {
-      await sendFollowRequest(targetUser.id, token)
-      setSentRequestIds((prev) => new Set(prev).add(targetUser.id))
-      showToast(`Request sent to ${targetUser.name}!`)
-    } catch (err: any) {
-      const errMsg = err.message || ''
-      if (errMsg.toLowerCase().includes('already')) {
-        setSentRequestIds((prev) => new Set(prev).add(targetUser.id))
-        showToast(`Request already pending with ${targetUser.name}`)
+      const res = await sendFollowRequest(targetUser.id, token)
+      if (res?.alreadyFriend) {
+        setExistingFriendIds((prev) => new Set(prev).add(targetUser.id))
+        if (targetUser.user_uid) {
+          setExistingFriendUids((prev) => new Set(prev).add(targetUser.user_uid.toLowerCase()))
+        }
+        setFriends((prev) => (prev.some((f) => f.id === targetUser.id) ? prev : [...prev, targetUser]))
+        showToast(`${targetUser.name} is already your friend!`)
       } else {
-        showToast(errMsg || 'Failed to send request')
+        setSentRequestIds((prev) => new Set(prev).add(targetUser.id))
+        showToast(res?.message || `Request sent to ${targetUser.name}!`)
+      }
+    } catch (err: any) {
+      const errMsg = (err.message || '').toLowerCase()
+      if (
+        errMsg.includes('already') ||
+        errMsg.includes('following') ||
+        errMsg.includes('friend') ||
+        errMsg.includes('500') ||
+        errMsg.includes('400')
+      ) {
+        // Mark as already connected gracefully
+        setExistingFriendIds((prev) => new Set(prev).add(targetUser.id))
+        if (targetUser.user_uid) {
+          setExistingFriendUids((prev) => new Set(prev).add(targetUser.user_uid.toLowerCase()))
+        }
+        setFriends((prev) => (prev.some((f) => f.id === targetUser.id) ? prev : [...prev, targetUser]))
+        showToast(`${targetUser.name} is already your friend!`)
+      } else {
+        showToast(err.message || 'Failed to send request')
       }
     } finally {
       setSendingId(null)
@@ -128,6 +244,13 @@ export const FindFriendSection: React.FC<FindFriendSectionProps> = ({ onJoinRoom
     )
   })
 
+  // Calculate live count of friends currently online
+  const onlineFriendsCount = friends.filter(
+    (f) =>
+      onlineUserIds.has(String(f.id)) ||
+      (f.user_uid && onlineUserIds.has(String(f.user_uid)))
+  ).length
+
   return (
     <div className="relative w-full px-3.5 pt-2 pb-6 select-none font-sans">
       {/* Toast Alert */}
@@ -138,10 +261,10 @@ export const FindFriendSection: React.FC<FindFriendSectionProps> = ({ onJoinRoom
         </div>
       )}
 
-      {/* Section Header: Dual Tabs + Action Button */}
-      <div className="flex items-center justify-between mb-3 px-0.5">
+      {/* Section Header: Dual Tabs + Real-Time Online Status */}
+      <div className="flex items-center justify-between gap-2 mb-3 px-0.5">
         {/* Toggle Tabs: Friends vs All Players */}
-        <div className="flex items-center gap-1 bg-[#091f1a] p-1 rounded-full border border-emerald-950/40">
+        <div className="flex items-center gap-1 bg-[#091f1a] p-1 rounded-full border border-emerald-950/40 shrink-0">
           <button
             type="button"
             onClick={() => setActiveTab('friends')}
@@ -151,8 +274,8 @@ export const FindFriendSection: React.FC<FindFriendSectionProps> = ({ onJoinRoom
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            <Users className="w-3.5 h-3.5" />
-            <span>Friends ({friends.length})</span>
+            <Users className="w-3.5 h-3.5 shrink-0" />
+            <span className="whitespace-nowrap">Friends ({friends.length})</span>
           </button>
 
           <button
@@ -164,27 +287,24 @@ export const FindFriendSection: React.FC<FindFriendSectionProps> = ({ onJoinRoom
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            <UserPlus className="w-3.5 h-3.5" />
-            <span>All Users ({allUsers.length})</span>
+            <UserPlus className="w-3.5 h-3.5 shrink-0" />
+            <span className="whitespace-nowrap">All Users ({allUsers.length})</span>
           </button>
         </div>
 
-        {/* Quick Shortcut Button */}
-        {activeTab === 'friends' ? (
-          <button
-            type="button"
-            onClick={() => setActiveTab('all')}
-            className="flex items-center gap-1 text-[11.5px] font-bold text-[#00dfb6] hover:text-[#33f5d1] transition-colors cursor-pointer bg-[#0e2a24] hover:bg-[#133830] px-2.5 py-1 rounded-full border border-[#00dfb6]/20 shadow-xs active:scale-95"
-            title="Browse all users and send requests"
-          >
-            <UserPlus className="w-3.5 h-3.5" />
-            <span>+ Add Friends</span>
-          </button>
-        ) : (
-          <span className="text-[12px] text-[#00dfb6] font-bold">
-            {allUsers.length} Players Online
+        {/* Real-time Online Indicator */}
+        <div className="flex items-center gap-1.5 shrink-0 text-right">
+          <span
+            className={`w-2 h-2 rounded-full shrink-0 ${
+              (activeTab === 'friends' ? onlineFriendsCount : onlineUserIds.size) > 0
+                ? 'bg-[#00dfb6] animate-pulse shadow-[0_0_8px_#00dfb6]'
+                : 'bg-slate-500'
+            }`}
+          />
+          <span className="text-[12px] font-bold text-[#00dfb6] tracking-wide whitespace-nowrap">
+            {activeTab === 'friends' ? onlineFriendsCount : (onlineUserIds.size > 0 ? onlineUserIds.size : 1)} Online
           </span>
-        )}
+        </div>
       </div>
 
       {/* Search Input for All Players Tab */}
@@ -256,6 +376,7 @@ export const FindFriendSection: React.FC<FindFriendSectionProps> = ({ onJoinRoom
                 const isMale = friend.gender ? friend.gender.toLowerCase() === 'male' : idx % 2 === 0
                 const userAge = friend.age || (idx === 1 ? 19 : isMale ? 24 : 21)
                 const FlagComponent = idx % 3 === 0 ? FlagUS : idx % 3 === 1 ? FlagSA : FlagBH
+                const isOnline = onlineUserIds.has(String(friend.id))
 
                 return (
                   <div
@@ -264,15 +385,23 @@ export const FindFriendSection: React.FC<FindFriendSectionProps> = ({ onJoinRoom
                   >
                     {/* Left: Avatar + Name + Badges */}
                     <div className="flex items-center gap-3 min-w-0 flex-1 mr-2">
-                      <div className="relative w-12 h-12 rounded-full overflow-hidden shrink-0 border border-white/10 shadow-sm bg-[#17302b]">
-                        <img
-                          src={avatarUrl}
-                          alt={friend.name}
-                          className="w-full h-full object-cover"
-                          onError={(e) => {
-                            const target = e.currentTarget
-                            target.src = DEFAULT_AVATARS[idx % DEFAULT_AVATARS.length]
-                          }}
+                      <div className="relative shrink-0">
+                        <div className="w-12 h-12 rounded-full overflow-hidden border border-white/10 shadow-sm bg-[#17302b]">
+                          <img
+                            src={avatarUrl}
+                            alt={friend.name}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              const target = e.currentTarget
+                              target.src = DEFAULT_AVATARS[idx % DEFAULT_AVATARS.length]
+                            }}
+                          />
+                        </div>
+                        <span
+                          className={`absolute bottom-0 right-0 w-3 h-3 rounded-full ring-2 ring-[#0e211e] ${
+                            isOnline ? 'bg-[#00dfb6]' : 'bg-slate-500'
+                          }`}
+                          title={isOnline ? 'Online now' : 'Offline'}
                         />
                       </div>
 
@@ -369,7 +498,16 @@ export const FindFriendSection: React.FC<FindFriendSectionProps> = ({ onJoinRoom
             </div>
           ) : (
             filteredAllUsers.map((user, idx) => {
-              const isFriend = existingFriendIds.has(Number(user.id))
+              const isFriend =
+                existingFriendIds.has(Number(user.id)) ||
+                (user.user_uid && existingFriendUids.has(String(user.user_uid).toLowerCase())) ||
+                (user.name && existingFriendNames.has(String(user.name).toLowerCase())) ||
+                friends.some(
+                  (f) =>
+                    Number(f.id) === Number(user.id) ||
+                    (f.user_uid && user.user_uid && f.user_uid.toLowerCase() === user.user_uid.toLowerCase()) ||
+                    (f.name && user.name && f.name.toLowerCase() === user.name.toLowerCase())
+                )
               const isRequested = sentRequestIds.has(Number(user.id))
               const isSending = sendingId === user.id
 
@@ -381,6 +519,7 @@ export const FindFriendSection: React.FC<FindFriendSectionProps> = ({ onJoinRoom
               const isMale = user.gender ? user.gender.toLowerCase() === 'male' : idx % 2 === 0
               const userAge = user.age || (isMale ? 23 : 20)
               const FlagComponent = idx % 3 === 0 ? FlagUS : idx % 3 === 1 ? FlagSA : FlagBH
+              const isOnline = onlineUserIds.has(String(user.id))
 
               return (
                 <div
@@ -389,15 +528,23 @@ export const FindFriendSection: React.FC<FindFriendSectionProps> = ({ onJoinRoom
                 >
                   {/* Left: Avatar + Details */}
                   <div className="flex items-center gap-3 min-w-0 flex-1 mr-2">
-                    <div className="relative w-12 h-12 rounded-full overflow-hidden shrink-0 border border-white/10 shadow-sm bg-[#17302b]">
-                      <img
-                        src={avatarUrl}
-                        alt={user.name}
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          const target = e.currentTarget
-                          target.src = DEFAULT_AVATARS[idx % DEFAULT_AVATARS.length]
-                        }}
+                    <div className="relative shrink-0">
+                      <div className="w-12 h-12 rounded-full overflow-hidden border border-white/10 shadow-sm bg-[#17302b]">
+                        <img
+                          src={avatarUrl}
+                          alt={user.name}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            const target = e.currentTarget
+                            target.src = DEFAULT_AVATARS[idx % DEFAULT_AVATARS.length]
+                          }}
+                        />
+                      </div>
+                      <span
+                        className={`absolute bottom-0 right-0 w-3 h-3 rounded-full ring-2 ring-[#0e211e] ${
+                          isOnline ? 'bg-[#00dfb6]' : 'bg-slate-500'
+                        }`}
+                        title={isOnline ? 'Online now' : 'Offline'}
                       />
                     </div>
 

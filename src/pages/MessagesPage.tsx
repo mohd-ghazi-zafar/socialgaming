@@ -21,6 +21,9 @@ import {
   Pin,
   Trash2,
   SmilePlus,
+  Play,
+  Pause,
+  Radio,
 } from 'lucide-react'
 import {
   viewAllUsers,
@@ -35,6 +38,9 @@ import {
   viewInbox,
   startOrGetChat,
   sendChatMessage,
+  sendVoiceNote,
+  voiceNotePlayed,
+  fetchUserOnlineStatus,
   viewChatHistory,
   markChatAsRead,
   reactToChatMessage,
@@ -49,6 +55,9 @@ import {
   emitTyping,
   emitStopTyping,
   emitMarkRead,
+  emitRecordingVoice,
+  emitStopRecordingVoice,
+  isUserOnline,
 } from '../services/chatSocket'
 import { FlagEG, FlagSA } from '../components/common/SvgIcons'
 
@@ -93,6 +102,8 @@ interface BackendMessage {
   content: string | null
   media_url?: string | null
   media_duration?: number | null
+  waveform?: number[] | null
+  is_voice_played?: boolean
   file_name?: string | null
   reactions?: Record<string, string>
   status?: string
@@ -188,8 +199,18 @@ export const MessagesPage: React.FC = () => {
   const [messages, setMessages] = useState<BackendMessage[]>([])
   const messagesEndRef = React.useRef<HTMLDivElement>(null)
 
-  // Real-time Chat States (Socket.IO + 04_files)
+  // Real-time Chat States (Socket.IO + 04_files & 05_files)
   const [isOtherTyping, setIsOtherTyping] = useState(false)
+  const [isOtherRecordingVoice, setIsOtherRecordingVoice] = useState(false)
+  const [isRecordingVoice, setIsRecordingVoice] = useState(false)
+  const [recordingDuration, setRecordingDuration] = useState(0)
+  const [activeAudioPlayingId, setActiveAudioPlayingId] = useState<number | null>(null)
+  const [otherUserOnlineInfo, setOtherUserOnlineInfo] = useState<{ is_online: boolean; last_seen?: string | null } | null>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
+  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const activeAudioElementRef = useRef<HTMLAudioElement | null>(null)
   const [activeMessageActionId, setActiveMessageActionId] = useState<number | null>(null)
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
@@ -333,9 +354,34 @@ export const MessagesPage: React.FC = () => {
       )
     }
 
+    // 8. Live Voice Recording Indicator (from 05_files)
+    const handleUserRecordingVoice = (data: { chat_id: number; sender_id: number }) => {
+      if (Number(data.chat_id) === Number(activeChatId) && currentUserId && Number(data.sender_id) !== Number(currentUserId)) {
+        setIsOtherRecordingVoice(true)
+      }
+    }
+
+    const handleUserStopRecordingVoice = (data: { chat_id: number; sender_id: number }) => {
+      if (Number(data.chat_id) === Number(activeChatId)) {
+        setIsOtherRecordingVoice(false)
+      }
+    }
+
+    // 9. Voice Note Played Receipt (from 05_files)
+    const handleVoicePlayed = (data: { message_id: number; chat_id: number; is_voice_played: boolean }) => {
+      if (Number(data.chat_id) === Number(activeChatId)) {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === data.message_id ? { ...m, is_voice_played: true } : m))
+        )
+      }
+    }
+
     socket.on('new_message', handleNewMessage)
     socket.on('user_typing', handleUserTyping)
     socket.on('user_stop_typing', handleUserStopTyping)
+    socket.on('user_recording_voice', handleUserRecordingVoice)
+    socket.on('user_stop_recording_voice', handleUserStopRecordingVoice)
+    socket.on('voice_played', handleVoicePlayed)
     socket.on('messages_read', handleMessagesRead)
     socket.on('message_reacted', handleMessageReacted)
     socket.on('message_edited', handleMessageEdited)
@@ -345,9 +391,13 @@ export const MessagesPage: React.FC = () => {
     return () => {
       leaveChatRoom(activeChatId)
       setIsOtherTyping(false)
+      setIsOtherRecordingVoice(false)
       socket.off('new_message', handleNewMessage)
       socket.off('user_typing', handleUserTyping)
       socket.off('user_stop_typing', handleUserStopTyping)
+      socket.off('user_recording_voice', handleUserRecordingVoice)
+      socket.off('user_stop_recording_voice', handleUserStopRecordingVoice)
+      socket.off('voice_played', handleVoicePlayed)
       socket.off('messages_read', handleMessagesRead)
       socket.off('message_reacted', handleMessageReacted)
       socket.off('message_edited', handleMessageEdited)
@@ -355,6 +405,25 @@ export const MessagesPage: React.FC = () => {
       socket.off('message_pinned', handleMessagePinned)
     }
   }, [activeChat?.chatId, activeChat?.isSystem])
+
+  // Sync recipient's live online & last seen status from 05_files endpoint
+  useEffect(() => {
+    if (!activeChat?.userId || activeChat.isSystem) {
+      setOtherUserOnlineInfo(null)
+      return
+    }
+
+    const token = getAuthToken()
+    if (token) {
+      fetchUserOnlineStatus(activeChat.userId, token)
+        .then((res) => {
+          if (res?.data) {
+            setOtherUserOnlineInfo(res.data)
+          }
+        })
+        .catch(() => {})
+    }
+  }, [activeChat?.userId, activeChat?.isSystem])
 
   // Fetch real users, real inbox, and follow requests from backend
   useEffect(() => {
@@ -982,6 +1051,193 @@ export const MessagesPage: React.FC = () => {
     setMessages((prev) => [...prev, localMsg])
   }
 
+  // Real Voice Note Recording (from 05_files MediaRecorder API)
+  const startVoiceRecording = async () => {
+    try {
+      if (!navigator?.mediaDevices?.getUserMedia) {
+        showToast('Voice recording is not supported in this browser')
+        return
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mediaRecorder = new MediaRecorder(stream)
+      mediaRecorderRef.current = mediaRecorder
+      audioChunksRef.current = []
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data)
+      }
+
+      mediaRecorder.start()
+      setIsRecordingVoice(true)
+      setRecordingDuration(0)
+
+      const currentUserId = getStoredAuth()?.user?.id
+      if (activeChat?.chatId && currentUserId) {
+        emitRecordingVoice(activeChat.chatId, currentUserId)
+      }
+
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingDuration((prev) => prev + 1)
+      }, 1000)
+    } catch (err: any) {
+      console.warn('Microphone permission error:', err.message)
+      showToast('Microphone access is required for voice snap')
+    }
+  }
+
+  const stopAndSendVoice = async () => {
+    const recorder = mediaRecorderRef.current
+    if (!recorder) return
+
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current)
+      recordingTimerRef.current = null
+    }
+
+    const currentUserId = getStoredAuth()?.user?.id
+    if (activeChat?.chatId && currentUserId) {
+      emitStopRecordingVoice(activeChat.chatId, currentUserId)
+    }
+
+    recorder.onstop = async () => {
+      const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
+      recorder.stream.getTracks().forEach((track) => track.stop())
+      setIsRecordingVoice(false)
+
+      let token = getAuthToken()
+      if (!token) token = await ensureActiveAuthToken()
+      let chatId = activeChat?.chatId
+
+      if (!chatId && activeChat?.userId && token) {
+        const res = await startOrGetChat(activeChat.userId, token)
+        chatId = res?.chat?.id
+        if (chatId) setActiveChat((prev) => (prev ? { ...prev, chatId } : prev))
+      }
+
+      if (chatId && token) {
+        const fd = new FormData()
+        fd.append('voice', audioBlob, `voice_${Date.now()}.webm`)
+        fd.append('message_type', 'voice')
+        fd.append('media_duration', String(recordingDuration || 1))
+        fd.append('waveform', JSON.stringify([25, 50, 85, 60, 35, 95, 75, 45, 65, 35, 90, 45]))
+
+        try {
+          showToast('Sending voice snap...')
+          const res = await sendVoiceNote(chatId, fd, token).catch(() =>
+            sendChatMessage(chatId, fd, token)
+          )
+          if (res?.data) {
+            setMessages((prev) => {
+              if (prev.some((m) => m.id === res.data.id)) return prev
+              return [...prev, res.data]
+            })
+            setThreads((prev) =>
+              prev.map((t) =>
+                t.chatId === chatId ? { ...t, lastMessage: '🎙️ Voice Note', timestamp: 'Now' } : t
+              )
+            )
+          }
+        } catch {
+          showToast('Voice note failed to send')
+        }
+      }
+    }
+
+    recorder.stop()
+  }
+
+  const cancelVoiceRecording = () => {
+    const recorder = mediaRecorderRef.current
+    if (recorder) {
+      recorder.stream.getTracks().forEach((track) => track.stop())
+    }
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current)
+      recordingTimerRef.current = null
+    }
+    const currentUserId = getStoredAuth()?.user?.id
+    if (activeChat?.chatId && currentUserId) {
+      emitStopRecordingVoice(activeChat.chatId, currentUserId)
+    }
+    setIsRecordingVoice(false)
+    setRecordingDuration(0)
+  }
+
+  // Interactive Voice Note Playback & Blue Mic Receipt (from 05_files)
+  const handleTogglePlayAudio = (message: BackendMessage) => {
+    if (!message.media_url) {
+      showToast('Audio file not found')
+      return
+    }
+
+    if (activeAudioPlayingId === message.id) {
+      activeAudioElementRef.current?.pause()
+      setActiveAudioPlayingId(null)
+      return
+    }
+
+    if (activeAudioElementRef.current) {
+      activeAudioElementRef.current.pause()
+    }
+
+    const audio = new Audio(normalizeImageUrl(message.media_url) || message.media_url)
+    activeAudioElementRef.current = audio
+    setActiveAudioPlayingId(message.id)
+
+    audio.onended = () => {
+      setActiveAudioPlayingId(null)
+    }
+    audio.onerror = () => {
+      setActiveAudioPlayingId(null)
+    }
+    audio.play().catch(() => setActiveAudioPlayingId(null))
+
+    // Mark as played if recipient (from 05_files endpoint)
+    const currentUserId = getStoredAuth()?.user?.id
+    if (currentUserId && Number(message.sender_id) !== Number(currentUserId) && !message.is_voice_played) {
+      const token = getAuthToken()
+      if (token) {
+        voiceNotePlayed(message.id, token).catch(() => {})
+      }
+      setMessages((prev) =>
+        prev.map((m) => (m.id === message.id ? { ...m, is_voice_played: true } : m))
+      )
+    }
+  }
+
+  // Media Attachment Upload
+  const handleMediaFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !activeChat) return
+
+    let token = getAuthToken()
+    if (!token) token = await ensureActiveAuthToken()
+    let chatId = activeChat.chatId
+
+    if (chatId && token) {
+      const fd = new FormData()
+      fd.append('media', file)
+      fd.append(
+        'message_type',
+        file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : 'file'
+      )
+
+      try {
+        showToast('Uploading media snap...')
+        const res = await sendChatMessage(chatId, fd, token)
+        if (res?.data) {
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === res.data.id)) return prev
+            return [...prev, res.data]
+          })
+        }
+      } catch {
+        showToast('Failed to upload media')
+      }
+    }
+  }
+
   return (
     <div className="relative w-full max-w-[471px] mx-auto select-none bg-white min-h-screen text-slate-900 pb-6 flex flex-col font-sans">
       {/* Toast Alert */}
@@ -1462,15 +1718,29 @@ export const MessagesPage: React.FC = () => {
                 <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400">
                   {activeChat.isSystem ? (
                     <span className="text-emerald-600 font-medium">Verified System Channel</span>
+                  ) : isOtherRecordingVoice ? (
+                    <span className="text-rose-500 font-bold flex items-center gap-1 animate-pulse">
+                      <Radio className="w-3 h-3 animate-spin" />
+                      recording voice snap...
+                    </span>
                   ) : isOtherTyping ? (
                     <span className="text-emerald-500 font-bold flex items-center gap-1 animate-pulse">
                       typing...
                     </span>
+                  ) : isUserOnline(activeChat.userId || 0) || otherUserOnlineInfo?.is_online ? (
+                    <span className="text-emerald-500 font-bold flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      Active now
+                    </span>
                   ) : (
                     <>
-                      <span className="text-amber-500 font-bold">🔥 14</span>
+                      <span className="text-slate-400">
+                        {otherUserOnlineInfo?.last_seen
+                          ? `Last seen ${new Date(otherUserOnlineInfo.last_seen).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                          : 'Offline'}
+                      </span>
                       <span className="text-slate-300">•</span>
-                      <span className="text-slate-400">Tap for Friendship</span>
+                      <span className="text-slate-400">Snapchat Tap</span>
                     </>
                   )}
                 </div>
@@ -1596,7 +1866,7 @@ export const MessagesPage: React.FC = () => {
                   {/* Message Bubble */}
                   <div
                     onClick={() => setActiveMessageActionId(isActionOpen ? null : m.id)}
-                    className={`relative max-w-[82%] px-3.5 py-2.5 rounded-2xl text-[13.5px] leading-relaxed shadow-xs break-words cursor-pointer transition-transform active:scale-[0.99] ${
+                    className={`relative max-w-[85%] px-3.5 py-2.5 rounded-2xl text-[13.5px] leading-relaxed shadow-xs break-words cursor-pointer transition-transform active:scale-[0.99] ${
                       m.is_deleted_for_everyone
                         ? 'bg-slate-100 text-slate-400 italic rounded-2xl'
                         : isMe
@@ -1609,7 +1879,74 @@ export const MessagesPage: React.FC = () => {
                         <Pin className="w-3 h-3 fill-amber-300" />
                       </span>
                     )}
-                    <p>{text}</p>
+
+                    {/* 1. Voice Note Bubble (from 05_files) */}
+                    {m.message_type === 'voice' || (m.media_url && (m.media_url.includes('.webm') || m.media_url.includes('audio') || m.media_url.includes('.wav') || m.media_url.includes('.mp3'))) ? (
+                      <div className="flex items-center gap-2.5 py-0.5 min-w-[180px]">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleTogglePlayAudio(m)
+                          }}
+                          className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 shadow-xs cursor-pointer transition-transform active:scale-90 ${
+                            isMe ? 'bg-white text-[#0099ff]' : 'bg-[#0099ff] text-white'
+                          }`}
+                        >
+                          {activeAudioPlayingId === m.id ? (
+                            <Pause className="w-4 h-4 fill-current" />
+                          ) : (
+                            <Play className="w-4 h-4 fill-current translate-x-0.5" />
+                          )}
+                        </button>
+
+                        {/* Waveform bars visualization */}
+                        <div className="flex-1 flex items-center gap-[2.5px] h-6 overflow-hidden">
+                          {(m.waveform && m.waveform.length > 0 ? m.waveform : [30, 60, 95, 45, 80, 60, 30, 90, 40, 70, 50, 85, 30, 60]).map((h, bIdx) => (
+                            <span
+                              key={bIdx}
+                              style={{ height: `${Math.max(15, Math.min(100, Number(h)))}%` }}
+                              className={`w-[2.5px] rounded-full transition-all ${
+                                activeAudioPlayingId === m.id
+                                  ? 'bg-amber-300 animate-pulse'
+                                  : isMe ? 'bg-white/80' : 'bg-[#0099ff]/60'
+                              }`}
+                            />
+                          ))}
+                        </div>
+
+                        {/* Duration & Mic Status (blue mic if listened) */}
+                        <div className="flex items-center gap-1 text-[11px] font-mono shrink-0">
+                          <span className={isMe ? 'text-white/90' : 'text-slate-600'}>
+                            {m.media_duration ? `0:${m.media_duration < 10 ? '0' : ''}${m.media_duration}` : '0:03'}
+                          </span>
+                          <Mic
+                            className={`w-3.5 h-3.5 ${
+                              m.is_voice_played
+                                ? 'text-[#0099ff] fill-[#0099ff]'
+                                : isMe
+                                ? 'text-white/70'
+                                : 'text-slate-400'
+                            }`}
+                            title={m.is_voice_played ? 'Listened' : 'Unheard'}
+                          />
+                        </div>
+                      </div>
+                    ) : m.message_type === 'image' || (m.media_url && (m.media_url.endsWith('.png') || m.media_url.endsWith('.jpg') || m.media_url.endsWith('.jpeg'))) ? (
+                      /* 2. Image Snap Bubble */
+                      <div className="space-y-1">
+                        <img
+                          src={normalizeImageUrl(m.media_url) || m.media_url}
+                          alt="Snap media"
+                          className="rounded-xl max-h-56 max-w-full object-cover shadow-xs"
+                          loading="lazy"
+                        />
+                        {text && <p className="text-xs mt-1">{text}</p>}
+                      </div>
+                    ) : (
+                      /* 3. Text Message */
+                      <p>{text}</p>
+                    )}
                   </div>
 
                   {/* Floating Emoji Reactions & Actions Menu (04_files) */}
@@ -1720,64 +2057,104 @@ export const MessagesPage: React.FC = () => {
             </div>
           ) : (
             <div className="px-3 py-2.5 bg-white border-t border-slate-100 flex items-center gap-2 z-20 shrink-0 shadow-[0_-2px_12px_rgba(0,0,0,0.04)]">
-              {/* Snapchat Iconic Round Camera Button */}
-              <button
-                type="button"
-                onClick={() => showToast('Snap camera opened')}
-                className="w-10 h-10 rounded-full bg-[#f2f3f5] hover:bg-[#e8eaed] active:scale-95 text-slate-800 flex items-center justify-center shrink-0 cursor-pointer shadow-2xs transition-all"
-                title="Camera"
-              >
-                <Camera className="w-5 h-5 stroke-[2] text-slate-800" />
-              </button>
+              {/* Hidden file input for photos/media */}
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleMediaFileSelect}
+                accept="image/*,video/*"
+                className="hidden"
+              />
 
-              {/* "Send a chat" Pill Container */}
-              <div className="flex-1 bg-[#f2f3f5] rounded-full px-4 py-2 flex items-center gap-2 border border-transparent focus-within:border-slate-200 focus-within:bg-white transition-all shadow-inner">
-                <input
-                  type="text"
-                  value={chatInput}
-                  onChange={(e) => handleInputChange(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                  placeholder="Send a chat"
-                  className="bg-transparent text-[13px] text-slate-900 placeholder-slate-400 focus:outline-none flex-1 font-normal"
-                  autoFocus
-                />
-                <button
-                  type="button"
-                  onClick={() => setChatInput((prev) => prev + ' 😊')}
-                  className="text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
-                  title="Emoji"
-                >
-                  <Smile className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => showToast('Photo gallery opened')}
-                  className="text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
-                  title="Photos"
-                >
-                  <ImageIcon className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Action Button: Snapchat Electric Blue Send OR Voice Mic */}
-              {chatInput.trim() ? (
-                <button
-                  type="button"
-                  onClick={handleSendMessage}
-                  className="w-10 h-10 rounded-full bg-[#0099ff] hover:bg-[#0088ee] active:scale-95 text-white flex items-center justify-center shrink-0 shadow-md cursor-pointer transition-all animate-scale-up"
-                  title="Send"
-                >
-                  <Send className="w-4 h-4 text-white translate-x-0.5" />
-                </button>
+              {isRecordingVoice ? (
+                /* Active Voice Snap Recording Bar (from 05_files) */
+                <div className="flex-1 flex items-center justify-between bg-rose-50 border border-rose-200/80 rounded-full px-4 py-2 animate-pulse shadow-xs">
+                  <div className="flex items-center gap-2 text-rose-600 font-bold text-xs">
+                    <span className="w-2.5 h-2.5 rounded-full bg-rose-600 animate-ping" />
+                    <span>Recording Voice Snap... 0:{recordingDuration < 10 ? '0' : ''}{recordingDuration}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={cancelVoiceRecording}
+                      className="p-1 rounded-full text-slate-500 hover:text-rose-600 cursor-pointer transition-colors"
+                      title="Cancel Recording"
+                    >
+                      <X className="w-4 h-4 stroke-[2.5]" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={stopAndSendVoice}
+                      className="px-3 py-1 rounded-full bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-extrabold text-xs shadow-xs cursor-pointer flex items-center gap-1 transition-all"
+                      title="Send Voice Note"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      <span>Send</span>
+                    </button>
+                  </div>
+                </div>
               ) : (
-                <button
-                  type="button"
-                  onClick={() => showToast('Hold to record voice snap')}
-                  className="w-10 h-10 rounded-full bg-[#f2f3f5] hover:bg-[#e8eaed] active:scale-95 text-slate-800 flex items-center justify-center shrink-0 cursor-pointer shadow-2xs transition-all"
-                  title="Voice Snap"
-                >
-                  <Mic className="w-4 h-4 text-slate-800" />
-                </button>
+                <>
+                  {/* Snapchat Iconic Round Camera Button */}
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-10 h-10 rounded-full bg-[#f2f3f5] hover:bg-[#e8eaed] active:scale-95 text-slate-800 flex items-center justify-center shrink-0 cursor-pointer shadow-2xs transition-all"
+                    title="Camera & Photos"
+                  >
+                    <Camera className="w-5 h-5 stroke-[2] text-slate-800" />
+                  </button>
+
+                  {/* "Send a chat" Pill Container */}
+                  <div className="flex-1 bg-[#f2f3f5] rounded-full px-4 py-2 flex items-center gap-2 border border-transparent focus-within:border-slate-200 focus-within:bg-white transition-all shadow-inner">
+                    <input
+                      type="text"
+                      value={chatInput}
+                      onChange={(e) => handleInputChange(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                      placeholder="Send a chat"
+                      className="bg-transparent text-[13px] text-slate-900 placeholder-slate-400 focus:outline-none flex-1 font-normal"
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setChatInput((prev) => prev + ' 😊')}
+                      className="text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
+                      title="Emoji"
+                    >
+                      <Smile className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
+                      title="Upload Photo / Media"
+                    >
+                      <ImageIcon className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {/* Action Button: Snapchat Electric Blue Send OR Voice Mic */}
+                  {chatInput.trim() ? (
+                    <button
+                      type="button"
+                      onClick={handleSendMessage}
+                      className="w-10 h-10 rounded-full bg-[#0099ff] hover:bg-[#0088ee] active:scale-95 text-white flex items-center justify-center shrink-0 shadow-md cursor-pointer transition-all animate-scale-up"
+                      title="Send"
+                    >
+                      <Send className="w-4 h-4 text-white translate-x-0.5" />
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={startVoiceRecording}
+                      className="w-10 h-10 rounded-full bg-[#f2f3f5] hover:bg-[#e8eaed] active:scale-95 text-slate-800 flex items-center justify-center shrink-0 cursor-pointer shadow-2xs transition-all"
+                      title="Record Voice Snap"
+                    >
+                      <Mic className="w-4 h-4 text-slate-800" />
+                    </button>
+                  )}
+                </>
               )}
             </div>
           )}

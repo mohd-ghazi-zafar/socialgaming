@@ -24,6 +24,24 @@ export function normalizeImageUrl(url) {
   return url
 }
 
+export function parseJwt(token) {
+  try {
+    if (!token || typeof token !== 'string') return null
+    const base64Url = token.split('.')[1]
+    if (!base64Url) return null
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/')
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    )
+    return JSON.parse(jsonPayload)
+  } catch {
+    return null
+  }
+}
+
 export const AUTH_STORAGE_KEY = 'uada_auth_session'
 
 export function getStoredAuth() {
@@ -616,6 +634,59 @@ export async function sendChatMessage(chatId, payload, token) {
     throw new Error(data.message || `Failed to send message (${res.status})`)
   }
   return data
+}
+
+/**
+ * Dedicated send voice note endpoint (from 05_files)
+ * POST /api/chatroute/:chatId/voice
+ */
+export async function sendVoiceNote(chatId, formData, token) {
+  const res = await fetch(`${CHAT_BASE_URL}/${chatId}/voice`, {
+    method: 'POST',
+    headers: { ...authHeader(token) },
+    body: formData,
+  })
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(data.message || `Failed to send voice note (${res.status})`)
+  }
+  return data
+}
+
+/**
+ * Mark voice note as played (from 05_files)
+ * PUT /api/chatroute/message/:messageId/played
+ */
+export async function voiceNotePlayed(messageId, token) {
+  const res = await fetch(`${CHAT_BASE_URL}/message/${messageId}/played`, {
+    method: 'PUT',
+    headers: { ...authHeader(token) },
+  })
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(data.message || `Failed to mark voice note played (${res.status})`)
+  }
+  return data
+}
+
+/**
+ * Fetch a specific player's online status & last seen (from 05_files)
+ * GET /api/chatroute/status/:userId
+ */
+export async function fetchUserOnlineStatus(userId, token) {
+  try {
+    const res = await fetch(`${CHAT_BASE_URL}/status/${userId}`, {
+      method: 'GET',
+      headers: { ...authHeader(token) },
+    })
+    if (!res.ok) return { success: false, data: null }
+    const data = await res.json().catch(() => ({}))
+    return data
+  } catch {
+    return { success: false, data: null }
+  }
 }
 
 /**

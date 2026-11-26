@@ -74,6 +74,7 @@ app.set("io", io);
 
 // Initialize real-time chat socket listeners
 initChatSocket(io);
+app.set("onlineUsers", initChatSocket.onlineUsers);
 
 const PORT = process.env.PORT || 9700;
 
@@ -240,7 +241,9 @@ const initChatSocket = (io) => {
     });
 };
 
+initChatSocket.onlineUsers = onlineUsers;
 module.exports = initChatSocket;
+module.exports.onlineUsers = onlineUsers;
 
 
 privateChatModule.js
@@ -1120,6 +1123,23 @@ const searchMessagesInChat = async (req, res) => {
     }
 };
 
+// 11. VIEW ONLINE USERS (REST FALLBACK)
+const viewOnlineUsers = async (req, res) => {
+    try {
+        const onlineUsers = req.app.get("onlineUsers");
+        const list = onlineUsers && onlineUsers.keys ? Array.from(onlineUsers.keys()) : [];
+        return res.status(200).json({
+            success: true,
+            message: "Online users fetched successfully",
+            count: list.length,
+            online_users: list
+        });
+    } catch (err) {
+        console.error("viewOnlineUsers error:", err.message);
+        return res.status(500).json({ success: false, message: "Server error", error: err.message });
+    }
+};
+
 
 module.exports = {
     startOrGetChat,
@@ -1131,7 +1151,8 @@ module.exports = {
     editChatMessage,
     removeChatMessage,
     pinChatMessage,
-    searchMessagesInChat
+    searchMessagesInChat,
+    viewOnlineUsers
 };
 
 route / chat / privateChat.js
@@ -1149,13 +1170,15 @@ const {
     editChatMessage,
     removeChatMessage,
     pinChatMessage,
-    searchMessagesInChat
+    searchMessagesInChat,
+    viewOnlineUsers
 } = require("../../controller/chatController/privateChatController");
 
 const uploadChatMedia = require("../../middleware/uploadprivatechat");
 const { verifyToken } = require("../../middleware/jwtauthication");
 
 // Mounted at /api/chatroute in app.js
+router.get("/online-users", verifyToken, viewOnlineUsers);
 router.get("/inbox", verifyToken, viewInbox);
 router.post("/start/:receiverId", verifyToken, startOrGetChat);
 

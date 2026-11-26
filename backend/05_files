@@ -1,0 +1,2620 @@
+const express = require("express");
+const cors = require("cors");
+const cookieParser = require("cookie-parser");
+const path = require("path");
+
+/* ================= ROUTES IMPORTS ================= */
+const authRoutes = require("./route/signupRoutes");
+const followRoutes = require("./route/followers_followingRoutes");
+const blockRoute = require("./route/blockRoutes");
+const reportRoutes = require("./route/ReportRoutes");
+const bannerRoutes = require("./route/bannerRoutes");
+const adminRoutes = require("./route/adminRoutes");
+const chatRoutes = require("./route/chat/privateChat");
+const momentRoutes = require("./route/momentRoutes");
+
+const app = express();
+
+/* ================= MIDDLEWARE ================= */
+app.use(cors({
+    origin: "*",
+    methods: "GET,POST,PUT,DELETE,PATCH,OPTIONS",
+    allowedHeaders: "Content-Type,Authorization",
+    credentials: true
+}));
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
+
+/* ================= STATIC UPLOADS ================= */
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+/* ================= ROUTES ================= */
+app.use("/api/signuproute", authRoutes);
+app.use("/api/follow", followRoutes);
+app.use("/api/blockroute", blockRoute);
+app.use("/api/report", reportRoutes);
+app.use("/api/banner", bannerRoutes);
+app.use("/api/admin", adminRoutes);
+app.use("/api/chatroute", chatRoutes);
+app.use("/api/momentroute", momentRoutes);
+
+/* ================= DEFAULT ROUTE ================= */
+app.get("/", (req, res) => {
+    return res.status(200).json({
+        success: true,
+        message: "GAME Backend API Running Successfully"
+    });
+});
+
+module.exports = app;
+
+
+server.js
+
+require("dotenv").config();
+const http = require("http");
+const { Server } = require("socket.io");
+const app = require("./app");
+const initChatSocket = require("./socket/chatSocket");
+
+const server = http.createServer(app);
+
+const io = new Server(server, {
+    cors: {
+        origin: "*",
+        methods: ["GET", "POST", "PUT", "DELETE", "PATCH"]
+    }
+});
+
+// Make io accessible inside controllers via req.app.get("io")
+app.set("io", io);
+
+// Initialize real-time chat, voice recording indicators & online status
+initChatSocket(io);
+
+const PORT = process.env.PORT || 9700;
+
+server.listen(PORT, () => {
+    console.log(`GAME Backend Server running on port ${PORT}`);
+});
+
+middleware / uploadprivatechat.js
+
+const multer = require("multer");
+const path = require("path");
+const fs = require("fs");
+
+const uploadDir = path.join(__dirname, "../uploads/chat");
+if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, uploadDir);
+    },
+    filename: (req, file, cb) => {
+        const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+        const ext = path.extname(file.originalname) || ".m4a";
+        cb(null, `chat-media-${uniqueSuffix}${ext}`);
+    }
+});
+
+const fileFilter = (req, file, cb) => {
+    const allowedMimeTypes = [
+        // Audio / Voice Note formats
+        "audio/mpeg",
+        "audio/mp3",
+        "audio/wav",
+        "audio/wave",
+        "audio/x-wav",
+        "audio/m4a",
+        "audio/x-m4a",
+        "audio/mp4",
+        "audio/aac",
+        "audio/ogg",
+        "audio/webm",
+        "application/octet-stream",
+        // Image, Video & Document formats
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+        "image/gif",
+        "video/mp4",
+        "video/quicktime",
+        "application/pdf"
+    ];
+
+    if (allowedMimeTypes.includes(file.mimetype)) {
+        cb(null, true);
+    } else {
+        cb(new Error(`Unsupported file type: ${file.mimetype}`), false);
+    }
+};
+
+const uploadChatMedia = multer({
+    storage,
+    fileFilter,
+    limits: {
+        fileSize: 25 * 1024 * 1024 // 25 MB max
+    }
+});
+
+module.exports = uploadChatMedia;
+
+
+module / chat / privateChatModule.js
+
+const pool = require("../../config/connection");
+
+// =====================================================
+// CREATE / MIGRATE CHATS, MESSAGES & USER PRESENCE COLUMNS
+// =====================================================
+(async () => {
+    try {
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS chats (
+                id SERIAL PRIMARY KEY,
+                chat_uid VARCHAR(50) UNIQUE NOT NULL,
+                user1_id INT NOT NULL,
+                user2_id INT NOT NULL,
+
+                last_message TEXT,
+                last_message_type VARCHAR(30) DEFAULT 'text',
+                last_message_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+                user1_unread INT DEFAULT 0,
+                user2_unread INT DEFAULT 0,
+
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+                FOREIGN KEY (user1_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (user2_id) REFERENCES users(id) ON DELETE CASCADE,
+
+                UNIQUE (user1_id, user2_id),
+                CHECK (user1_id < user2_id)
+            );
+        `);
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS chat_messages (
+                id SERIAL PRIMARY KEY,
+                chat_id INT NOT NULL,
+                sender_id INT NOT NULL,
+                receiver_id INT NOT NULL,
+
+                message_type VARCHAR(30) NOT NULL DEFAULT 'text'
+                    CHECK (message_type IN ('text', 'voice', 'image', 'video', 'file', 'sticker')),
+
+                content TEXT,
+                media_url TEXT,
+                media_duration INT,
+                waveform JSONB DEFAULT '[]'::jsonb,
+                is_voice_played BOOLEAN DEFAULT FALSE,
+                file_name VARCHAR(255),
+                file_size VARCHAR(50),
+
+                reply_to_message_id INT,
+                reactions JSONB DEFAULT '{}'::jsonb,
+
+                status VARCHAR(20) DEFAULT 'sent'
+                    CHECK (status IN ('sent', 'delivered', 'read')),
+                read_at TIMESTAMP,
+
+                is_edited BOOLEAN DEFAULT FALSE,
+                is_pinned BOOLEAN DEFAULT FALSE,
+                is_deleted_for_everyone BOOLEAN DEFAULT FALSE,
+                deleted_for_users JSONB DEFAULT '[]'::jsonb,
+                starred_by JSONB DEFAULT '[]'::jsonb,
+
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+                FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE,
+                FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (receiver_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (reply_to_message_id) REFERENCES chat_messages(id) ON DELETE SET NULL
+            );
+        `);
+
+        // Ensure voice & online status columns exist on existing tables
+        await pool.query(`
+            ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS waveform JSONB DEFAULT '[]'::jsonb;
+            ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS is_voice_played BOOLEAN DEFAULT FALSE;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS is_online BOOLEAN DEFAULT FALSE;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+        `);
+
+        await pool.query(`
+            CREATE INDEX IF NOT EXISTS idx_chat_messages_chat_id ON chat_messages(chat_id, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_chats_user1 ON chats(user1_id);
+            CREATE INDEX IF NOT EXISTS idx_chats_user2 ON chats(user2_id);
+        `);
+
+        console.log("Chats, voice notes & online status tables ready");
+    } catch (err) {
+        console.error("Error creating chat tables:", err.message);
+    }
+})();
+
+
+// =====================================================
+// 1. GET OR CREATE 1-ON-1 CHAT ROOM
+// =====================================================
+const getOrCreateChat = async (playerAId, playerBId, chatUid) => {
+    const u1 = Math.min(Number(playerAId), Number(playerBId));
+    const u2 = Math.max(Number(playerAId), Number(playerBId));
+
+    const existing = await pool.query(
+        `SELECT * FROM chats WHERE user1_id = $1 AND user2_id = $2 LIMIT 1`,
+        [u1, u2]
+    );
+
+    if (existing.rows[0]) {
+        return existing.rows[0];
+    }
+
+    const created = await pool.query(
+        `
+        INSERT INTO chats (chat_uid, user1_id, user2_id)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (user1_id, user2_id) DO UPDATE SET updated_at = CURRENT_TIMESTAMP
+        RETURNING *
+        `,
+        [chatUid, u1, u2]
+    );
+
+    return created.rows[0];
+};
+
+
+// =====================================================
+// 2. GET CHAT BY ID OR CHAT_UID
+// =====================================================
+const getChatById = async (identifier) => {
+    const isNumeric = /^\d+$/.test(String(identifier));
+    const column = isNumeric ? "id" : "chat_uid";
+
+    const result = await pool.query(
+        `SELECT * FROM chats WHERE ${column} = $1 LIMIT 1`,
+        [identifier]
+    );
+
+    return result.rows[0] || null;
+};
+
+
+// =====================================================
+// 3. GET USER'S INBOX (WITH ONLINE STATUS & LAST SEEN)
+// =====================================================
+const getUserChats = async (userId) => {
+    const uid = Number(userId);
+    const result = await pool.query(
+        `
+        SELECT
+            c.id AS chat_id,
+            c.chat_uid,
+            c.last_message,
+            c.last_message_type,
+            c.last_message_at,
+            CASE
+                WHEN c.user1_id = $1 THEN c.user1_unread
+                ELSE c.user2_unread
+            END AS unread_count,
+            other_user.id AS player_id,
+            other_user.user_uid AS player_uid,
+            other_user.name AS player_name,
+            other_user.profile_image AS player_image,
+            other_user.is_online AS player_is_online,
+            other_user.last_seen AS player_last_seen
+        FROM chats c
+        JOIN users other_user
+            ON other_user.id = CASE WHEN c.user1_id = $1 THEN c.user2_id ELSE c.user1_id END
+        WHERE c.user1_id = $1 OR c.user2_id = $1
+        ORDER BY c.last_message_at DESC
+        `,
+        [uid]
+    );
+
+    return result.rows;
+};
+
+
+// =====================================================
+// 4. SEND MESSAGE (TEXT, VOICE NOTE, IMAGE, VIDEO, FILE)
+// =====================================================
+const sendMessage = async (msgData) => {
+    const {
+        chat_id,
+        sender_id,
+        receiver_id,
+        message_type = "text",
+        content = null,
+        media_url = null,
+        media_duration = null,
+        waveform = [],
+        file_name = null,
+        file_size = null,
+        reply_to_message_id = null
+    } = msgData;
+
+    const insertResult = await pool.query(
+        `
+        INSERT INTO chat_messages (
+            chat_id,
+            sender_id,
+            receiver_id,
+            message_type,
+            content,
+            media_url,
+            media_duration,
+            waveform,
+            file_name,
+            file_size,
+            reply_to_message_id
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11)
+        RETURNING id
+        `,
+        [
+            chat_id,
+            sender_id,
+            receiver_id,
+            message_type,
+            content,
+            media_url,
+            media_duration,
+            JSON.stringify(Array.isArray(waveform) ? waveform : []),
+            file_name,
+            file_size,
+            reply_to_message_id
+        ]
+    );
+
+    const newMessageId = insertResult.rows[0].id;
+
+    const previewText =
+        message_type === "text"
+            ? content
+            : message_type === "voice"
+                ? `🎤 Voice message (${media_duration || 0}s)`
+                : message_type === "image"
+                    ? "📷 Photo"
+                    : message_type === "video"
+                        ? "🎥 Video"
+                        : message_type === "sticker"
+                            ? "💟 Sticker"
+                            : `📎 ${file_name || "File"}`;
+
+    await pool.query(
+        `
+        UPDATE chats
+        SET
+            last_message = $1,
+            last_message_type = $2,
+            last_message_at = CURRENT_TIMESTAMP,
+            user1_unread = CASE WHEN user1_id = $3 THEN user1_unread + 1 ELSE user1_unread END,
+            user2_unread = CASE WHEN user2_id = $3 THEN user2_unread + 1 ELSE user2_unread END,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = $4
+        `,
+        [previewText, message_type, receiver_id, chat_id]
+    );
+
+    const fullMessageResult = await pool.query(
+        `
+        SELECT
+            m.*,
+            sender.name AS sender_name,
+            sender.user_uid AS sender_uid,
+            sender.profile_image AS sender_image,
+            reply.content AS reply_content,
+            reply.message_type AS reply_message_type,
+            reply.sender_id AS reply_sender_id
+        FROM chat_messages m
+        JOIN users sender ON sender.id = m.sender_id
+        LEFT JOIN chat_messages reply ON reply.id = m.reply_to_message_id
+        WHERE m.id = $1
+        `,
+        [newMessageId]
+    );
+
+    return fullMessageResult.rows[0];
+};
+
+
+// =====================================================
+// 5. GET CHAT HISTORY
+// =====================================================
+const getChatMessages = async (chatId, currentUserId, limit = 50, offset = 0) => {
+    const result = await pool.query(
+        `
+        SELECT
+            m.*,
+            sender.name AS sender_name,
+            sender.user_uid AS sender_uid,
+            sender.profile_image AS sender_image,
+            reply.content AS reply_content,
+            reply.message_type AS reply_message_type,
+            reply.sender_id AS reply_sender_id
+        FROM chat_messages m
+        JOIN users sender ON sender.id = m.sender_id
+        LEFT JOIN chat_messages reply ON reply.id = m.reply_to_message_id
+        WHERE m.chat_id = $1
+          AND NOT (m.deleted_for_users @> to_jsonb($2::int))
+        ORDER BY m.created_at DESC
+        LIMIT $3 OFFSET $4
+        `,
+        [chatId, Number(currentUserId), limit, offset]
+    );
+
+    return result.rows.reverse();
+};
+
+
+// =====================================================
+// 6. MARK VOICE NOTE AS PLAYED
+// =====================================================
+const markVoiceNotePlayed = async (messageId, listenerId) => {
+    const result = await pool.query(
+        `
+        UPDATE chat_messages
+        SET
+            is_voice_played = TRUE,
+            status = 'read',
+            read_at = COALESCE(read_at, CURRENT_TIMESTAMP),
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = $1
+          AND receiver_id = $2
+          AND message_type = 'voice'
+        RETURNING *
+        `,
+        [messageId, Number(listenerId)]
+    );
+
+    return result.rows[0] || null;
+};
+
+
+// =====================================================
+// 7. MARK MESSAGES AS READ
+// =====================================================
+const markMessagesRead = async (chatId, readerId) => {
+    const uid = Number(readerId);
+
+    const updated = await pool.query(
+        `
+        UPDATE chat_messages
+        SET
+            status = 'read',
+            read_at = CURRENT_TIMESTAMP,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE chat_id = $1
+          AND receiver_id = $2
+          AND status != 'read'
+        RETURNING id, sender_id
+        `,
+        [chatId, uid]
+    );
+
+    await pool.query(
+        `
+        UPDATE chats
+        SET
+            user1_unread = CASE WHEN user1_id = $1 THEN 0 ELSE user1_unread END,
+            user2_unread = CASE WHEN user2_id = $1 THEN 0 ELSE user2_unread END
+        WHERE id = $2
+        `,
+        [uid, chatId]
+    );
+
+    return updated.rows;
+};
+
+
+// =====================================================
+// 8. REACT / UNREACT TO MESSAGE
+// =====================================================
+const toggleMessageReaction = async (messageId, userId, emoji) => {
+    const existing = await pool.query(
+        `SELECT reactions FROM chat_messages WHERE id = $1`,
+        [messageId]
+    );
+
+    if (!existing.rows[0]) return null;
+
+    const reactions = existing.rows[0].reactions || {};
+    const key = String(userId);
+
+    if (!emoji || reactions[key] === emoji) {
+        delete reactions[key];
+    } else {
+        reactions[key] = emoji;
+    }
+
+    const result = await pool.query(
+        `
+        UPDATE chat_messages
+        SET reactions = $1::jsonb, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $2
+        RETURNING *
+        `,
+        [JSON.stringify(reactions), messageId]
+    );
+
+    return result.rows[0];
+};
+
+
+// =====================================================
+// 9. EDIT TEXT MESSAGE
+// =====================================================
+const editMessage = async (messageId, senderId, newContent) => {
+    const result = await pool.query(
+        `
+        UPDATE chat_messages
+        SET
+            content = $1,
+            is_edited = TRUE,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = $2
+          AND sender_id = $3
+          AND message_type = 'text'
+          AND is_deleted_for_everyone = FALSE
+        RETURNING *
+        `,
+        [newContent, messageId, senderId]
+    );
+
+    return result.rows[0] || null;
+};
+
+
+// =====================================================
+// 10. DELETE MESSAGE
+// =====================================================
+const deleteMessage = async (messageId, userId, deleteForEveryone = false) => {
+    if (deleteForEveryone) {
+        const result = await pool.query(
+            `
+            UPDATE chat_messages
+            SET
+                content = 'This message was deleted',
+                media_url = NULL,
+                is_deleted_for_everyone = TRUE,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = $1 AND sender_id = $2
+            RETURNING *
+            `,
+            [messageId, userId]
+        );
+        return result.rows[0] || null;
+    }
+
+    const result = await pool.query(
+        `
+        UPDATE chat_messages
+        SET
+            deleted_for_users = CASE
+                WHEN NOT (deleted_for_users @> to_jsonb($2::int))
+                THEN deleted_for_users || to_jsonb($2::int)
+                ELSE deleted_for_users
+            END,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = $1
+        RETURNING *
+        `,
+        [messageId, Number(userId)]
+    );
+
+    return result.rows[0] || null;
+};
+
+
+// =====================================================
+// 11. PIN / UNPIN MESSAGE
+// =====================================================
+const togglePinMessage = async (messageId) => {
+    const result = await pool.query(
+        `
+        UPDATE chat_messages
+        SET is_pinned = NOT is_pinned, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $1
+        RETURNING *
+        `,
+        [messageId]
+    );
+
+    return result.rows[0] || null;
+};
+
+
+// =====================================================
+// 12. SEARCH MESSAGES
+// =====================================================
+const searchChatMessages = async (chatId, currentUserId, searchTerm) => {
+    const result = await pool.query(
+        `
+        SELECT *
+        FROM chat_messages
+        WHERE chat_id = $1
+          AND is_deleted_for_everyone = FALSE
+          AND NOT (deleted_for_users @> to_jsonb($2::int))
+          AND content ILIKE $3
+        ORDER BY created_at DESC
+        `,
+        [chatId, Number(currentUserId), `%${searchTerm}%`]
+    );
+
+    return result.rows;
+};
+
+
+// =====================================================
+// 13. SET USER ONLINE / OFFLINE STATUS
+// =====================================================
+const setUserOnlineStatus = async (userId, isOnline) => {
+    const result = await pool.query(
+        `
+        UPDATE users
+        SET
+            is_online = $1,
+            last_seen = CURRENT_TIMESTAMP
+        WHERE id = $2
+        RETURNING id, name, is_online, last_seen
+        `,
+        [Boolean(isOnline), Number(userId)]
+    );
+    return result.rows[0] || null;
+};
+
+
+// =====================================================
+// 14. GET USER ONLINE STATUS & LAST SEEN
+// =====================================================
+const getUserOnlineStatus = async (userId) => {
+    const result = await pool.query(
+        `
+        SELECT id AS user_id, name, is_online, last_seen
+        FROM users
+        WHERE id = $1
+        LIMIT 1
+        `,
+        [Number(userId)]
+    );
+    return result.rows[0] || null;
+};
+
+
+module.exports = {
+    getOrCreateChat,
+    getChatById,
+    getUserChats,
+    sendMessage,
+    getChatMessages,
+    markVoiceNotePlayed,
+    markMessagesRead,
+    toggleMessageReaction,
+    editMessage,
+    deleteMessage,
+    togglePinMessage,
+    searchChatMessages,
+    setUserOnlineStatus,
+    getUserOnlineStatus
+};
+
+socket / chatSocket.js
+
+const crypto = require("crypto");
+const {
+    getOrCreateChat,
+    getChatById,
+    sendMessage,
+    markMessagesRead,
+    setUserOnlineStatus,
+    getUserOnlineStatus
+} = require("../module/chat/privateChatModule");
+
+const onlineUsers = new Map(); // userId -> Set of socketIds
+
+const generateChatUid = () => {
+    const year = new Date().getFullYear();
+    const randomDigits = crypto.randomInt(100000, 999999);
+    return `CHAT-${randomDigits}-${year}`;
+};
+
+const initChatSocket = (io) => {
+    io.on("connection", (socket) => {
+        console.log("Client connected:", socket.id);
+
+        // 1. Register user online & broadcast live status
+        socket.on("user_online", async (userId) => {
+            try {
+                if (!userId) return;
+                const uid = String(userId);
+                socket.userId = uid;
+
+                const isFirstConnection = !onlineUsers.has(uid);
+                if (isFirstConnection) {
+                    onlineUsers.set(uid, new Set());
+                }
+                onlineUsers.get(uid).add(socket.id);
+                socket.join(`user_${uid}`);
+
+                if (isFirstConnection) {
+                    const statusRow = await setUserOnlineStatus(uid, true);
+                    io.emit("user_status_changed", {
+                        user_id: Number(uid),
+                        is_online: true,
+                        last_seen: statusRow?.last_seen || new Date().toISOString()
+                    });
+                }
+
+                io.emit("online_users", Array.from(onlineUsers.keys()));
+            } catch (err) {
+                console.error("Socket user_online error:", err.message);
+            }
+        });
+
+        // 2. Check a specific player's online status on demand
+        socket.on("check_user_status", async (targetUserId, callback) => {
+            try {
+                if (!targetUserId) return;
+                const isCurrentlyConnected = onlineUsers.has(String(targetUserId));
+                const dbStatus = await getUserOnlineStatus(targetUserId);
+
+                const payload = {
+                    user_id: Number(targetUserId),
+                    is_online: isCurrentlyConnected || Boolean(dbStatus?.is_online),
+                    last_seen: dbStatus?.last_seen || null
+                };
+
+                if (callback) callback({ success: true, data: payload });
+            } catch (err) {
+                console.error("Socket check_user_status error:", err.message);
+                if (callback) callback({ success: false, message: err.message });
+            }
+        });
+
+        // 3. Join / Leave 1-on-1 chat room
+        socket.on("join_chat", (chatId) => {
+            if (chatId) socket.join(`chat_${chatId}`);
+        });
+
+        socket.on("leave_chat", (chatId) => {
+            if (chatId) socket.leave(`chat_${chatId}`);
+        });
+
+        // 4. Send message in real time via Socket.IO
+        socket.on("send_message", async (payload, callback) => {
+            try {
+                const {
+                    chat_id,
+                    sender_id,
+                    receiver_id,
+                    message_type = "text",
+                    content = null,
+                    media_url = null,
+                    media_duration = null,
+                    waveform = [],
+                    reply_to_message_id = null
+                } = payload;
+
+                if (!sender_id || (!chat_id && !receiver_id)) {
+                    if (callback) callback({ success: false, message: "sender_id and chat_id/receiver_id required" });
+                    return;
+                }
+
+                let chat = chat_id ? await getChatById(chat_id) : null;
+                if (!chat && receiver_id) {
+                    chat = await getOrCreateChat(sender_id, receiver_id, generateChatUid());
+                }
+
+                if (!chat) {
+                    if (callback) callback({ success: false, message: "Chat room not found" });
+                    return;
+                }
+
+                const actualReceiverId =
+                    Number(chat.user1_id) === Number(sender_id)
+                        ? Number(chat.user2_id)
+                        : Number(chat.user1_id);
+
+                const savedMessage = await sendMessage({
+                    chat_id: chat.id,
+                    sender_id: Number(sender_id),
+                    receiver_id: actualReceiverId,
+                    message_type,
+                    content: content ? content.trim() : null,
+                    media_url,
+                    media_duration,
+                    waveform,
+                    reply_to_message_id
+                });
+
+                io.to(`chat_${chat.id}`).emit("new_message", savedMessage);
+                io.to(`user_${actualReceiverId}`).emit("inbox_updated", {
+                    chat_id: chat.id,
+                    chat_uid: chat.chat_uid,
+                    message: savedMessage
+                });
+
+                if (callback) callback({ success: true, data: savedMessage });
+            } catch (err) {
+                console.error("Socket send_message error:", err.message);
+                if (callback) callback({ success: false, message: err.message });
+            }
+        });
+
+        // 5. Typing & Voice Recording Live Indicators
+        socket.on("typing", ({ chat_id, sender_id }) => {
+            if (chat_id) socket.to(`chat_${chat_id}`).emit("user_typing", { chat_id, sender_id });
+        });
+
+        socket.on("stop_typing", ({ chat_id, sender_id }) => {
+            if (chat_id) socket.to(`chat_${chat_id}`).emit("user_stop_typing", { chat_id, sender_id });
+        });
+
+        socket.on("recording_voice", ({ chat_id, sender_id }) => {
+            if (chat_id) socket.to(`chat_${chat_id}`).emit("user_recording_voice", { chat_id, sender_id });
+        });
+
+        socket.on("stop_recording_voice", ({ chat_id, sender_id }) => {
+            if (chat_id) socket.to(`chat_${chat_id}`).emit("user_stop_recording_voice", { chat_id, sender_id });
+        });
+
+        // 6. Real-time read receipts (Blue ticks)
+        socket.on("mark_read", async ({ chat_id, reader_id }) => {
+            try {
+                if (!chat_id || !reader_id) return;
+                const updatedRows = await markMessagesRead(chat_id, reader_id);
+                const readMessageIds = updatedRows.map((row) => row.id);
+
+                if (readMessageIds.length > 0) {
+                    io.to(`chat_${chat_id}`).emit("messages_read", {
+                        chat_id: Number(chat_id),
+                        reader_id: Number(reader_id),
+                        read_message_ids: readMessageIds
+                    });
+                }
+            } catch (err) {
+                console.error("Socket mark_read error:", err.message);
+            }
+        });
+
+        // 7. Disconnect cleanup & mark offline
+        socket.on("disconnect", async () => {
+            try {
+                if (socket.userId && onlineUsers.has(socket.userId)) {
+                    const uid = socket.userId;
+                    const userSockets = onlineUsers.get(uid);
+                    userSockets.delete(socket.id);
+
+                    if (userSockets.size === 0) {
+                        onlineUsers.delete(uid);
+                        const statusRow = await setUserOnlineStatus(uid, false);
+
+                        io.emit("user_status_changed", {
+                            user_id: Number(uid),
+                            is_online: false,
+                            last_seen: statusRow?.last_seen || new Date().toISOString()
+                        });
+                    }
+                }
+                io.emit("online_users", Array.from(onlineUsers.keys()));
+                console.log("Client disconnected:", socket.id);
+            } catch (err) {
+                console.error("Socket disconnect error:", err.message);
+            }
+        });
+    });
+};
+
+module.exports = initChatSocket;
+
+
+controller / chatController / privateChatController.js
+
+const crypto = require("crypto");
+const {
+    getOrCreateChat,
+    getChatById,
+    getUserChats,
+    sendMessage,
+    getChatMessages,
+    markVoiceNotePlayed,
+    markMessagesRead,
+    toggleMessageReaction,
+    editMessage,
+    deleteMessage,
+    togglePinMessage,
+    searchChatMessages,
+    getUserOnlineStatus
+} = require("../../module/chat/privateChatModule");
+
+const generateChatUid = () => {
+    const year = new Date().getFullYear();
+    const randomDigits = crypto.randomInt(100000, 999999);
+    return `CHAT-${randomDigits}-${year}`;
+};
+
+const formatFileSize = (bytes) => {
+    if (!bytes) return null;
+    if (bytes < 1024 * 1024) {
+        return `${(bytes / 1024).toFixed(1)} KB`;
+    }
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+};
+
+
+// 1. START OR GET 1-ON-1 CHAT ROOM
+const startOrGetChat = async (req, res) => {
+    try {
+        const senderId = req.user.id;
+        const receiverId = req.params.receiverId;
+
+        if (!receiverId) {
+            return res.status(400).json({ message: "Receiver player ID is required" });
+        }
+
+        if (Number(senderId) === Number(receiverId)) {
+            return res.status(400).json({ message: "You cannot start a chat with yourself" });
+        }
+
+        const chatUid = generateChatUid();
+        const chat = await getOrCreateChat(senderId, receiverId, chatUid);
+        const receiverStatus = await getUserOnlineStatus(receiverId);
+
+        return res.status(200).json({
+            message: "Chat room ready",
+            chat,
+            receiver_status: receiverStatus
+        });
+    } catch (err) {
+        console.error("startOrGetChat error:", err.message);
+        if (err.code === "23503") {
+            return res.status(404).json({ message: "Player not found" });
+        }
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 2. GET USER'S INBOX
+const viewInbox = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const chats = await getUserChats(userId);
+
+        return res.status(200).json({
+            message: "Inbox fetched successfully",
+            count: chats.length,
+            chats
+        });
+    } catch (err) {
+        console.error("viewInbox error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 3. GET USER ONLINE STATUS & LAST SEEN
+const fetchUserOnlineStatus = async (req, res) => {
+    try {
+        const targetUserId = req.params.userId;
+        const status = await getUserOnlineStatus(targetUserId);
+
+        if (!status) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        return res.status(200).json({
+            message: "User status fetched successfully",
+            data: status
+        });
+    } catch (err) {
+        console.error("fetchUserOnlineStatus error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 4. SEND MESSAGE (TEXT, VOICE NOTE, IMAGE, VIDEO, FILE)
+const sendChatMessage = async (req, res) => {
+    try {
+        const senderId = Number(req.user.id);
+        const chatIdentifier = req.params.chatId;
+        const {
+            message_type,
+            content,
+            media_duration,
+            waveform,
+            reply_to_message_id
+        } = req.body;
+
+        const chat = await getChatById(chatIdentifier);
+        if (!chat) {
+            return res.status(404).json({ message: "Chat room not found" });
+        }
+
+        if (Number(chat.user1_id) !== senderId && Number(chat.user2_id) !== senderId) {
+            return res.status(403).json({ message: "Access denied to this chat room" });
+        }
+
+        const receiverId =
+            Number(chat.user1_id) === senderId
+                ? Number(chat.user2_id)
+                : Number(chat.user1_id);
+
+        const allowedTypes = ["text", "voice", "image", "video", "file", "sticker"];
+        const msgType = message_type && allowedTypes.includes(message_type)
+            ? message_type
+            : req.file
+                ? req.file.mimetype.startsWith("audio/")
+                    ? "voice"
+                    : "file"
+                : "text";
+
+        let mediaUrl = null;
+        let fileName = null;
+        let fileSize = null;
+
+        if (req.file) {
+            const baseUrl = `${req.protocol}://${req.get("host")}`;
+            mediaUrl = `${baseUrl}/uploads/chat/${req.file.filename}`;
+            fileName = req.file.originalname;
+            fileSize = formatFileSize(req.file.size);
+        }
+
+        if (msgType === "text" && (!content || content.trim() === "")) {
+            return res.status(400).json({ message: "Message content cannot be empty" });
+        }
+
+        if (msgType !== "text" && !mediaUrl && !content) {
+            return res.status(400).json({ message: `Audio/Media file is required for ${msgType} message` });
+        }
+
+        let parsedWaveform = [];
+        if (waveform) {
+            try {
+                parsedWaveform = typeof waveform === "string" ? JSON.parse(waveform) : waveform;
+            } catch (_) {
+                parsedWaveform = [];
+            }
+        }
+
+        const savedMessage = await sendMessage({
+            chat_id: chat.id,
+            sender_id: senderId,
+            receiver_id: receiverId,
+            message_type: msgType,
+            content: content ? content.trim() : null,
+            media_url: mediaUrl,
+            media_duration: media_duration ? parseInt(media_duration, 10) : null,
+            waveform: parsedWaveform,
+            file_name: fileName,
+            file_size: fileSize,
+            reply_to_message_id: reply_to_message_id ? parseInt(reply_to_message_id, 10) : null
+        });
+
+        const io = req.app.get("io");
+        if (io) {
+            io.to(`chat_${chat.id}`).emit("new_message", savedMessage);
+            io.to(`user_${receiverId}`).emit("inbox_updated", {
+                chat_id: chat.id,
+                chat_uid: chat.chat_uid,
+                message: savedMessage
+            });
+        }
+
+        return res.status(201).json({
+            message: msgType === "voice" ? "Voice note sent" : "Message sent",
+            data: savedMessage
+        });
+    } catch (err) {
+        console.error("sendChatMessage error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 5. DEDICATED SEND VOICE NOTE ENDPOINT
+const sendVoiceNote = async (req, res) => {
+    if (!req.file) {
+        return res.status(400).json({ message: "Voice audio file ('voice') is required" });
+    }
+    req.body.message_type = "voice";
+    return sendChatMessage(req, res);
+};
+
+
+// 6. MARK VOICE NOTE AS PLAYED
+const voiceNotePlayed = async (req, res) => {
+    try {
+        const listenerId = req.user.id;
+        const messageId = req.params.messageId;
+
+        const updatedMessage = await markVoiceNotePlayed(messageId, listenerId);
+        if (!updatedMessage) {
+            return res.status(404).json({ message: "Voice note not found or already marked" });
+        }
+
+        const io = req.app.get("io");
+        if (io) {
+            io.to(`chat_${updatedMessage.chat_id}`).emit("voice_played", {
+                message_id: updatedMessage.id,
+                chat_id: updatedMessage.chat_id,
+                is_voice_played: true
+            });
+        }
+
+        return res.status(200).json({
+            message: "Voice note marked as played",
+            data: updatedMessage
+        });
+    } catch (err) {
+        console.error("voiceNotePlayed error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 7. GET CHAT HISTORY
+const viewChatHistory = async (req, res) => {
+    try {
+        const userId = Number(req.user.id);
+        const chatIdentifier = req.params.chatId;
+        const limit = parseInt(req.query.limit, 10) || 50;
+        const offset = parseInt(req.query.offset, 10) || 0;
+
+        const chat = await getChatById(chatIdentifier);
+        if (!chat) {
+            return res.status(404).json({ message: "Chat room not found" });
+        }
+
+        if (Number(chat.user1_id) !== userId && Number(chat.user2_id) !== userId) {
+            return res.status(403).json({ message: "Access denied to this chat room" });
+        }
+
+        const messages = await getChatMessages(chat.id, userId, limit, offset);
+
+        return res.status(200).json({
+            message: "Chat history fetched successfully",
+            chat_id: chat.id,
+            chat_uid: chat.chat_uid,
+            count: messages.length,
+            messages
+        });
+    } catch (err) {
+        console.error("viewChatHistory error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 8. MARK MESSAGES AS READ
+const markChatAsRead = async (req, res) => {
+    try {
+        const readerId = Number(req.user.id);
+        const chatIdentifier = req.params.chatId;
+
+        const chat = await getChatById(chatIdentifier);
+        if (!chat) {
+            return res.status(404).json({ message: "Chat room not found" });
+        }
+
+        if (Number(chat.user1_id) !== readerId && Number(chat.user2_id) !== readerId) {
+            return res.status(403).json({ message: "Access denied to this chat room" });
+        }
+
+        const updatedRows = await markMessagesRead(chat.id, readerId);
+        const readMessageIds = updatedRows.map((row) => row.id);
+
+        const io = req.app.get("io");
+        if (io && readMessageIds.length > 0) {
+            io.to(`chat_${chat.id}`).emit("messages_read", {
+                chat_id: chat.id,
+                reader_id: readerId,
+                read_message_ids: readMessageIds
+            });
+        }
+
+        return res.status(200).json({
+            message: "Messages marked as read",
+            chat_id: chat.id,
+            read_message_ids: readMessageIds
+        });
+    } catch (err) {
+        console.error("markChatAsRead error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 9. REACT TO MESSAGE
+const reactToMessage = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const messageId = req.params.messageId;
+        const { emoji } = req.body;
+
+        const updatedMessage = await toggleMessageReaction(messageId, userId, emoji || null);
+        if (!updatedMessage) {
+            return res.status(404).json({ message: "Message not found" });
+        }
+
+        const io = req.app.get("io");
+        if (io) {
+            io.to(`chat_${updatedMessage.chat_id}`).emit("message_reacted", {
+                message_id: updatedMessage.id,
+                reactions: updatedMessage.reactions
+            });
+        }
+
+        return res.status(200).json({ message: "Reaction updated", data: updatedMessage });
+    } catch (err) {
+        console.error("reactToMessage error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 10. EDIT TEXT MESSAGE
+const editChatMessage = async (req, res) => {
+    try {
+        const senderId = req.user.id;
+        const messageId = req.params.messageId;
+        const { content } = req.body;
+
+        if (!content || content.trim() === "") {
+            return res.status(400).json({ message: "Updated message content is required" });
+        }
+
+        const updatedMessage = await editMessage(messageId, senderId, content.trim());
+        if (!updatedMessage) {
+            return res.status(404).json({ message: "Message not found or you are not allowed to edit it" });
+        }
+
+        const io = req.app.get("io");
+        if (io) {
+            io.to(`chat_${updatedMessage.chat_id}`).emit("message_edited", updatedMessage);
+        }
+
+        return res.status(200).json({ message: "Message edited successfully", data: updatedMessage });
+    } catch (err) {
+        console.error("editChatMessage error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 11. DELETE MESSAGE
+const removeChatMessage = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const messageId = req.params.messageId;
+        const forEveryone = req.query.forEveryone === "true" || req.body?.forEveryone === true;
+
+        const deletedMessage = await deleteMessage(messageId, userId, forEveryone);
+        if (!deletedMessage) {
+            return res.status(404).json({ message: "Message not found or you cannot delete it for everyone" });
+        }
+
+        const io = req.app.get("io");
+        if (io && forEveryone) {
+            io.to(`chat_${deletedMessage.chat_id}`).emit("message_deleted", {
+                message_id: deletedMessage.id,
+                chat_id: deletedMessage.chat_id
+            });
+        }
+
+        return res.status(200).json({
+            message: forEveryone ? "Message deleted for everyone" : "Message deleted for you",
+            data: deletedMessage
+        });
+    } catch (err) {
+        console.error("removeChatMessage error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 12. PIN / UNPIN MESSAGE
+const pinChatMessage = async (req, res) => {
+    try {
+        const messageId = req.params.messageId;
+        const updatedMessage = await togglePinMessage(messageId);
+        if (!updatedMessage) {
+            return res.status(404).json({ message: "Message not found" });
+        }
+
+        const io = req.app.get("io");
+        if (io) {
+            io.to(`chat_${updatedMessage.chat_id}`).emit("message_pinned", {
+                message_id: updatedMessage.id,
+                is_pinned: updatedMessage.is_pinned
+            });
+        }
+
+        return res.status(200).json({
+            message: updatedMessage.is_pinned ? "Message pinned" : "Message unpinned",
+            data: updatedMessage
+        });
+    } catch (err) {
+        console.error("pinChatMessage error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 13. SEARCH MESSAGES
+const searchMessagesInChat = async (req, res) => {
+    try {
+        const userId = Number(req.user.id);
+        const chatIdentifier = req.params.chatId;
+        const searchTerm = req.query.q?.trim();
+
+        if (!searchTerm) {
+            return res.status(400).json({ message: "Search query 'q' is required" });
+        }
+
+        const chat = await getChatById(chatIdentifier);
+        if (!chat) {
+            return res.status(404).json({ message: "Chat room not found" });
+        }
+
+        if (Number(chat.user1_id) !== userId && Number(chat.user2_id) !== userId) {
+            return res.status(403).json({ message: "Access denied to this chat room" });
+        }
+
+        const results = await searchChatMessages(chat.id, userId, searchTerm);
+
+        return res.status(200).json({
+            message: "Search results fetched successfully",
+            count: results.length,
+            messages: results
+        });
+    } catch (err) {
+        console.error("searchMessagesInChat error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+module.exports = {
+    startOrGetChat,
+    viewInbox,
+    fetchUserOnlineStatus,
+    sendChatMessage,
+    sendVoiceNote,
+    voiceNotePlayed,
+    viewChatHistory,
+    markChatAsRead,
+    reactToMessage,
+    editChatMessage,
+    removeChatMessage,
+    pinChatMessage,
+    searchMessagesInChat
+};
+
+route / chat / privateChat.js
+
+const express = require("express");
+const router = express.Router();
+
+const {
+    startOrGetChat,
+    viewInbox,
+    fetchUserOnlineStatus,
+    sendChatMessage,
+    sendVoiceNote,
+    voiceNotePlayed,
+    viewChatHistory,
+    markChatAsRead,
+    reactToMessage,
+    editChatMessage,
+    removeChatMessage,
+    pinChatMessage,
+    searchMessagesInChat
+} = require("../../controller/chatController/privateChatController");
+
+const uploadChatMedia = require("../../middleware/uploadprivatechat");
+const { verifyToken } = require("../../middleware/jwtauthication");
+
+// Mounted at /api/chatroute
+router.get("/inbox", verifyToken, viewInbox);
+router.get("/status/:userId", verifyToken, fetchUserOnlineStatus);
+router.post("/start/:receiverId", verifyToken, startOrGetChat);
+
+// Message & Voice Note Actions
+router.put("/message/:messageId/played", verifyToken, voiceNotePlayed);
+router.put("/message/:messageId/react", verifyToken, reactToMessage);
+router.put("/message/:messageId/edit", verifyToken, editChatMessage);
+router.put("/message/:messageId/pin", verifyToken, pinChatMessage);
+router.delete("/message/:messageId", verifyToken, removeChatMessage);
+
+// Send Voice Note, General Media/Text, History, Read & Search
+router.post("/:chatId/voice", verifyToken, uploadChatMedia.single("voice"), sendVoiceNote);
+router.post("/:chatId/send", verifyToken, uploadChatMedia.single("media"), sendChatMessage);
+router.get("/:chatId/messages", verifyToken, viewChatHistory);
+router.put("/:chatId/read", verifyToken, markChatAsRead);
+router.get("/:chatId/search", verifyToken, searchMessagesInChat);
+
+module.exports = router;
+
+
+const express = require("express");
+const cors = require("cors");
+const cookieParser = require("cookie-parser");
+const path = require("path");
+
+/* ================= ROUTES IMPORTS ================= */
+const authRoutes = require("./route/signupRoutes");
+const followRoutes = require("./route/followers_followingRoutes");
+const blockRoute = require("./route/blockRoutes");
+const reportRoutes = require("./route/ReportRoutes");
+const bannerRoutes = require("./route/bannerRoutes");
+const adminRoutes = require("./route/adminRoutes");
+const chatRoutes = require("./route/chat/privateChat");
+const momentRoutes = require("./route/momentRoutes");
+
+const app = express();
+
+/* ================= MIDDLEWARE ================= */
+app.use(cors({
+    origin: "*",
+    methods: "GET,POST,PUT,DELETE,PATCH,OPTIONS",
+    allowedHeaders: "Content-Type,Authorization",
+    credentials: true
+}));
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
+
+/* ================= STATIC UPLOADS ================= */
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+/* ================= ROUTES ================= */
+app.use("/api/signuproute", authRoutes);
+app.use("/api/follow", followRoutes);
+app.use("/api/blockroute", blockRoute);
+app.use("/api/report", reportRoutes);
+app.use("/api/banner", bannerRoutes);
+app.use("/api/admin", adminRoutes);
+app.use("/api/chatroute", chatRoutes);
+app.use("/api/momentroute", momentRoutes);
+
+/* ================= DEFAULT ROUTE ================= */
+app.get("/", (req, res) => {
+    return res.status(200).json({
+        success: true,
+        message: "GAME Backend API Running Successfully"
+    });
+});
+
+module.exports = app;
+
+
+server.js
+
+
+require("dotenv").config();
+const http = require("http");
+const { Server } = require("socket.io");
+const app = require("./app");
+const initChatSocket = require("./socket/chatSocket");
+
+const server = http.createServer(app);
+
+const io = new Server(server, {
+    cors: {
+        origin: "*",
+        methods: ["GET", "POST", "PUT", "DELETE", "PATCH"]
+    }
+});
+
+// Make io accessible inside controllers via req.app.get("io")
+app.set("io", io);
+
+// Initialize real-time chat socket listeners
+initChatSocket(io);
+
+const PORT = process.env.PORT || 9700;
+
+server.listen(PORT, () => {
+    console.log(`GAME Backend Server running on port ${PORT}`);
+});
+
+
+const crypto = require("crypto");
+const {
+    getOrCreateChat,
+    getChatById,
+    sendMessage,
+    markMessagesRead
+} = require("../module/chat/privateChatModule");
+
+const onlineUsers = new Map(); // userId -> Set of socketIds (supports multiple tabs/devices)
+
+const generateChatUid = () => {
+    const year = new Date().getFullYear();
+    const randomDigits = crypto.randomInt(100000, 999999);
+    return `CHAT-${randomDigits}-${year}`;
+};
+
+const initChatSocket = (io) => {
+    io.on("connection", (socket) => {
+        console.log("Client connected:", socket.id);
+
+        // 1. Register user online & join personal room for inbox updates
+        socket.on("user_online", (userId) => {
+            if (!userId) return;
+            const uid = String(userId);
+            socket.userId = uid;
+
+            if (!onlineUsers.has(uid)) {
+                onlineUsers.set(uid, new Set());
+            }
+            onlineUsers.get(uid).add(socket.id);
+
+            socket.join(`user_${uid}`);
+            io.emit("online_users", Array.from(onlineUsers.keys()));
+        });
+
+        // 2. Join active 1-on-1 chat room
+        socket.on("join_chat", (chatId) => {
+            if (!chatId) return;
+            socket.join(`chat_${chatId}`);
+        });
+
+        // 3. Leave active 1-on-1 chat room
+        socket.on("leave_chat", (chatId) => {
+            if (!chatId) return;
+            socket.leave(`chat_${chatId}`);
+        });
+
+        // 4. Send message directly via Socket.IO (Text / Emoji / Sticker)
+        socket.on("send_message", async (payload, callback) => {
+            try {
+                const {
+                    chat_id,
+                    sender_id,
+                    receiver_id,
+                    message_type = "text",
+                    content = null,
+                    media_url = null,
+                    media_duration = null,
+                    file_name = null,
+                    file_size = null,
+                    reply_to_message_id = null
+                } = payload;
+
+                if (!sender_id || (!chat_id && !receiver_id)) {
+                    if (callback) callback({ success: false, message: "sender_id and chat_id/receiver_id required" });
+                    return;
+                }
+
+                let chat = chat_id ? await getChatById(chat_id) : null;
+                if (!chat && receiver_id) {
+                    chat = await getOrCreateChat(sender_id, receiver_id, generateChatUid());
+                }
+
+                if (!chat) {
+                    if (callback) callback({ success: false, message: "Chat room not found" });
+                    return;
+                }
+
+                const actualReceiverId =
+                    Number(chat.user1_id) === Number(sender_id)
+                        ? Number(chat.user2_id)
+                        : Number(chat.user1_id);
+
+                const savedMessage = await sendMessage({
+                    chat_id: chat.id,
+                    sender_id: Number(sender_id),
+                    receiver_id: actualReceiverId,
+                    message_type,
+                    content: content ? content.trim() : null,
+                    media_url,
+                    media_duration,
+                    file_name,
+                    file_size,
+                    reply_to_message_id
+                });
+
+                // Broadcast to everyone inside the chat room (including sender & receiver)
+                io.to(`chat_${chat.id}`).emit("new_message", savedMessage);
+
+                // Notify receiver's personal room to update inbox list & unread counter
+                io.to(`user_${actualReceiverId}`).emit("inbox_updated", {
+                    chat_id: chat.id,
+                    chat_uid: chat.chat_uid,
+                    message: savedMessage
+                });
+
+                if (callback) callback({ success: true, data: savedMessage });
+            } catch (err) {
+                console.error("Socket send_message error:", err.message);
+                if (callback) callback({ success: false, message: err.message });
+            }
+        });
+
+        // 5. Typing indicators
+        socket.on("typing", ({ chat_id, sender_id }) => {
+            if (!chat_id) return;
+            socket.to(`chat_${chat_id}`).emit("user_typing", { chat_id, sender_id });
+        });
+
+        socket.on("stop_typing", ({ chat_id, sender_id }) => {
+            if (!chat_id) return;
+            socket.to(`chat_${chat_id}`).emit("user_stop_typing", { chat_id, sender_id });
+        });
+
+        // 6. Real-time read receipts (Blue ticks)
+        socket.on("mark_read", async ({ chat_id, reader_id }) => {
+            try {
+                if (!chat_id || !reader_id) return;
+                const updatedRows = await markMessagesRead(chat_id, reader_id);
+                const readMessageIds = updatedRows.map((row) => row.id);
+
+                if (readMessageIds.length > 0) {
+                    io.to(`chat_${chat_id}`).emit("messages_read", {
+                        chat_id: Number(chat_id),
+                        reader_id: Number(reader_id),
+                        read_message_ids: readMessageIds
+                    });
+                }
+            } catch (err) {
+                console.error("Socket mark_read error:", err.message);
+            }
+        });
+
+        // 7. Disconnect cleanup
+        socket.on("disconnect", () => {
+            if (socket.userId && onlineUsers.has(socket.userId)) {
+                const userSockets = onlineUsers.get(socket.userId);
+                userSockets.delete(socket.id);
+                if (userSockets.size === 0) {
+                    onlineUsers.delete(socket.userId);
+                }
+            }
+            io.emit("online_users", Array.from(onlineUsers.keys()));
+            console.log("Client disconnected:", socket.id);
+        });
+    });
+};
+
+module.exports = initChatSocket;
+
+
+privateChatModule.js
+
+const pool = require("../../config/connection");
+
+// =====================================================
+// CREATE CHATS & CHAT MESSAGES TABLES
+// =====================================================
+(async () => {
+    try {
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS chats (
+                id SERIAL PRIMARY KEY,
+                chat_uid VARCHAR(50) UNIQUE NOT NULL,
+                user1_id INT NOT NULL,
+                user2_id INT NOT NULL,
+
+                last_message TEXT,
+                last_message_type VARCHAR(30) DEFAULT 'text',
+                last_message_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+                user1_unread INT DEFAULT 0,
+                user2_unread INT DEFAULT 0,
+
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+                FOREIGN KEY (user1_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (user2_id) REFERENCES users(id) ON DELETE CASCADE,
+
+                UNIQUE (user1_id, user2_id),
+                CHECK (user1_id < user2_id)
+            );
+        `);
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS chat_messages (
+                id SERIAL PRIMARY KEY,
+                chat_id INT NOT NULL,
+                sender_id INT NOT NULL,
+                receiver_id INT NOT NULL,
+
+                message_type VARCHAR(30) NOT NULL DEFAULT 'text'
+                    CHECK (message_type IN ('text', 'voice', 'image', 'video', 'file', 'sticker')),
+
+                content TEXT,
+                media_url TEXT,
+                media_duration INT,
+                file_name VARCHAR(255),
+                file_size VARCHAR(50),
+
+                reply_to_message_id INT,
+                reactions JSONB DEFAULT '{}'::jsonb,
+
+                status VARCHAR(20) DEFAULT 'sent'
+                    CHECK (status IN ('sent', 'delivered', 'read')),
+                read_at TIMESTAMP,
+
+                is_edited BOOLEAN DEFAULT FALSE,
+                is_pinned BOOLEAN DEFAULT FALSE,
+                is_deleted_for_everyone BOOLEAN DEFAULT FALSE,
+                deleted_for_users JSONB DEFAULT '[]'::jsonb,
+                starred_by JSONB DEFAULT '[]'::jsonb,
+
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+                FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE,
+                FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (receiver_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (reply_to_message_id) REFERENCES chat_messages(id) ON DELETE SET NULL
+            );
+        `);
+
+        await pool.query(`
+            CREATE INDEX IF NOT EXISTS idx_chat_messages_chat_id ON chat_messages(chat_id, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_chats_user1 ON chats(user1_id);
+            CREATE INDEX IF NOT EXISTS idx_chats_user2 ON chats(user2_id);
+        `);
+
+        console.log("Chats and chat_messages tables ready");
+    } catch (err) {
+        console.error("Error creating chat tables:", err.message);
+    }
+})();
+
+
+// =====================================================
+// 1. GET OR CREATE 1-ON-1 CHAT ROOM BETWEEN TWO PLAYERS
+// =====================================================
+const getOrCreateChat = async (playerAId, playerBId, chatUid) => {
+    const u1 = Math.min(Number(playerAId), Number(playerBId));
+    const u2 = Math.max(Number(playerAId), Number(playerBId));
+
+    const existing = await pool.query(
+        `SELECT * FROM chats WHERE user1_id = $1 AND user2_id = $2 LIMIT 1`,
+        [u1, u2]
+    );
+
+    if (existing.rows[0]) {
+        return existing.rows[0];
+    }
+
+    const created = await pool.query(
+        `
+        INSERT INTO chats (chat_uid, user1_id, user2_id)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (user1_id, user2_id) DO UPDATE SET updated_at = CURRENT_TIMESTAMP
+        RETURNING *
+        `,
+        [chatUid, u1, u2]
+    );
+
+    return created.rows[0];
+};
+
+
+// =====================================================
+// 2. GET CHAT BY ID OR CHAT_UID
+// =====================================================
+const getChatById = async (identifier) => {
+    const isNumeric = /^\d+$/.test(String(identifier));
+    const column = isNumeric ? "id" : "chat_uid";
+
+    const result = await pool.query(
+        `SELECT * FROM chats WHERE ${column} = $1 LIMIT 1`,
+        [identifier]
+    );
+
+    return result.rows[0] || null;
+};
+
+
+// =====================================================
+// 3. GET USER'S INBOX / ALL CONVERSATIONS
+// =====================================================
+const getUserChats = async (userId) => {
+    const uid = Number(userId);
+    const result = await pool.query(
+        `
+        SELECT
+            c.id AS chat_id,
+            c.chat_uid,
+            c.last_message,
+            c.last_message_type,
+            c.last_message_at,
+            CASE
+                WHEN c.user1_id = $1 THEN c.user1_unread
+                ELSE c.user2_unread
+            END AS unread_count,
+            other_user.id AS player_id,
+            other_user.user_uid AS player_uid,
+            other_user.name AS player_name,
+            other_user.profile_image AS player_image
+        FROM chats c
+        JOIN users other_user
+            ON other_user.id = CASE WHEN c.user1_id = $1 THEN c.user2_id ELSE c.user1_id END
+        WHERE c.user1_id = $1 OR c.user2_id = $1
+        ORDER BY c.last_message_at DESC
+        `,
+        [uid]
+    );
+
+    return result.rows;
+};
+
+
+// =====================================================
+// 4. SEND MESSAGE (RETURNS FULL HYDRATED MESSAGE OBJECT)
+// =====================================================
+const sendMessage = async (msgData) => {
+    const {
+        chat_id,
+        sender_id,
+        receiver_id,
+        message_type = "text",
+        content = null,
+        media_url = null,
+        media_duration = null,
+        file_name = null,
+        file_size = null,
+        reply_to_message_id = null
+    } = msgData;
+
+    const insertResult = await pool.query(
+        `
+        INSERT INTO chat_messages (
+            chat_id,
+            sender_id,
+            receiver_id,
+            message_type,
+            content,
+            media_url,
+            media_duration,
+            file_name,
+            file_size,
+            reply_to_message_id
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        RETURNING id
+        `,
+        [
+            chat_id,
+            sender_id,
+            receiver_id,
+            message_type,
+            content,
+            media_url,
+            media_duration,
+            file_name,
+            file_size,
+            reply_to_message_id
+        ]
+    );
+
+    const newMessageId = insertResult.rows[0].id;
+
+    // Preview text for inbox list
+    const previewText =
+        message_type === "text"
+            ? content
+            : message_type === "voice"
+                ? "🎤 Voice message"
+                : message_type === "image"
+                    ? "📷 Photo"
+                    : message_type === "video"
+                        ? "🎥 Video"
+                        : message_type === "sticker"
+                            ? "💟 Sticker"
+                            : `📎 ${file_name || "File"}`;
+
+    // Update chat room last_message & increment receiver's unread count
+    await pool.query(
+        `
+        UPDATE chats
+        SET
+            last_message = $1,
+            last_message_type = $2,
+            last_message_at = CURRENT_TIMESTAMP,
+            user1_unread = CASE WHEN user1_id = $3 THEN user1_unread + 1 ELSE user1_unread END,
+            user2_unread = CASE WHEN user2_id = $3 THEN user2_unread + 1 ELSE user2_unread END,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = $4
+        `,
+        [previewText, message_type, receiver_id, chat_id]
+    );
+
+    // Fetch full hydrated message with sender & reply details for instant UI rendering
+    const fullMessageResult = await pool.query(
+        `
+        SELECT
+            m.*,
+            sender.name AS sender_name,
+            sender.user_uid AS sender_uid,
+            sender.profile_image AS sender_image,
+            reply.content AS reply_content,
+            reply.message_type AS reply_message_type,
+            reply.sender_id AS reply_sender_id
+        FROM chat_messages m
+        JOIN users sender ON sender.id = m.sender_id
+        LEFT JOIN chat_messages reply ON reply.id = m.reply_to_message_id
+        WHERE m.id = $1
+        `,
+        [newMessageId]
+    );
+
+    return fullMessageResult.rows[0];
+};
+
+
+// =====================================================
+// 5. GET CHAT HISTORY BY CHAT_ID (PAGINATED + REPLY DETAILS)
+// =====================================================
+const getChatMessages = async (chatId, currentUserId, limit = 50, offset = 0) => {
+    const result = await pool.query(
+        `
+        SELECT
+            m.*,
+            sender.name AS sender_name,
+            sender.user_uid AS sender_uid,
+            sender.profile_image AS sender_image,
+            reply.content AS reply_content,
+            reply.message_type AS reply_message_type,
+            reply.sender_id AS reply_sender_id
+        FROM chat_messages m
+        JOIN users sender ON sender.id = m.sender_id
+        LEFT JOIN chat_messages reply ON reply.id = m.reply_to_message_id
+        WHERE m.chat_id = $1
+          AND NOT (m.deleted_for_users @> to_jsonb($2::int))
+        ORDER BY m.created_at DESC
+        LIMIT $3 OFFSET $4
+        `,
+        [chatId, Number(currentUserId), limit, offset]
+    );
+
+    return result.rows.reverse();
+};
+
+
+// =====================================================
+// 6. MARK MESSAGES AS DELIVERED OR READ
+// =====================================================
+const markMessagesRead = async (chatId, readerId) => {
+    const uid = Number(readerId);
+
+    const updated = await pool.query(
+        `
+        UPDATE chat_messages
+        SET
+            status = 'read',
+            read_at = CURRENT_TIMESTAMP,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE chat_id = $1
+          AND receiver_id = $2
+          AND status != 'read'
+        RETURNING id, sender_id
+        `,
+        [chatId, uid]
+    );
+
+    await pool.query(
+        `
+        UPDATE chats
+        SET
+            user1_unread = CASE WHEN user1_id = $1 THEN 0 ELSE user1_unread END,
+            user2_unread = CASE WHEN user2_id = $1 THEN 0 ELSE user2_unread END
+        WHERE id = $2
+        `,
+        [uid, chatId]
+    );
+
+    return updated.rows;
+};
+
+
+// =====================================================
+// 7. REACT / UNREACT TO A MESSAGE WITH EMOJI
+// =====================================================
+const toggleMessageReaction = async (messageId, userId, emoji) => {
+    const existing = await pool.query(
+        `SELECT reactions FROM chat_messages WHERE id = $1`,
+        [messageId]
+    );
+
+    if (!existing.rows[0]) return null;
+
+    const reactions = existing.rows[0].reactions || {};
+    const key = String(userId);
+
+    if (!emoji || reactions[key] === emoji) {
+        delete reactions[key];
+    } else {
+        reactions[key] = emoji;
+    }
+
+    const result = await pool.query(
+        `
+        UPDATE chat_messages
+        SET reactions = $1::jsonb, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $2
+        RETURNING *
+        `,
+        [JSON.stringify(reactions), messageId]
+    );
+
+    return result.rows[0];
+};
+
+
+// =====================================================
+// 8. EDIT TEXT MESSAGE (SENDER ONLY)
+// =====================================================
+const editMessage = async (messageId, senderId, newContent) => {
+    const result = await pool.query(
+        `
+        UPDATE chat_messages
+        SET
+            content = $1,
+            is_edited = TRUE,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = $2
+          AND sender_id = $3
+          AND message_type = 'text'
+          AND is_deleted_for_everyone = FALSE
+        RETURNING *
+        `,
+        [newContent, messageId, senderId]
+    );
+
+    return result.rows[0] || null;
+};
+
+
+// =====================================================
+// 9. DELETE MESSAGE ("FOR ME" OR "FOR EVERYONE")
+// =====================================================
+const deleteMessage = async (messageId, userId, deleteForEveryone = false) => {
+    if (deleteForEveryone) {
+        const result = await pool.query(
+            `
+            UPDATE chat_messages
+            SET
+                content = 'This message was deleted',
+                media_url = NULL,
+                is_deleted_for_everyone = TRUE,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = $1 AND sender_id = $2
+            RETURNING *
+            `,
+            [messageId, userId]
+        );
+        return result.rows[0] || null;
+    }
+
+    const result = await pool.query(
+        `
+        UPDATE chat_messages
+        SET
+            deleted_for_users = CASE
+                WHEN NOT (deleted_for_users @> to_jsonb($2::int))
+                THEN deleted_for_users || to_jsonb($2::int)
+                ELSE deleted_for_users
+            END,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = $1
+        RETURNING *
+        `,
+        [messageId, Number(userId)]
+    );
+
+    return result.rows[0] || null;
+};
+
+
+// =====================================================
+// 10. TOGGLE PIN MESSAGE IN CHAT
+// =====================================================
+const togglePinMessage = async (messageId) => {
+    const result = await pool.query(
+        `
+        UPDATE chat_messages
+        SET is_pinned = NOT is_pinned, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $1
+        RETURNING *
+        `,
+        [messageId]
+    );
+
+    return result.rows[0] || null;
+};
+
+
+// =====================================================
+// 11. SEARCH MESSAGES INSIDE A CHAT
+// =====================================================
+const searchChatMessages = async (chatId, currentUserId, searchTerm) => {
+    const result = await pool.query(
+        `
+        SELECT *
+        FROM chat_messages
+        WHERE chat_id = $1
+          AND is_deleted_for_everyone = FALSE
+          AND NOT (deleted_for_users @> to_jsonb($2::int))
+          AND content ILIKE $3
+        ORDER BY created_at DESC
+        `,
+        [chatId, Number(currentUserId), `%${searchTerm}%`]
+    );
+
+    return result.rows;
+};
+
+
+module.exports = {
+    getOrCreateChat,
+    getChatById,
+    getUserChats,
+    sendMessage,
+    getChatMessages,
+    markMessagesRead,
+    toggleMessageReaction,
+    editMessage,
+    deleteMessage,
+    togglePinMessage,
+    searchChatMessages
+};
+
+
+privateChatController.js
+
+
+const crypto = require("crypto");
+const {
+    getOrCreateChat,
+    getChatById,
+    getUserChats,
+    sendMessage,
+    getChatMessages,
+    markMessagesRead,
+    toggleMessageReaction,
+    editMessage,
+    deleteMessage,
+    togglePinMessage,
+    searchChatMessages
+} = require("../../module/chat/privateChatModule");
+
+const generateChatUid = () => {
+    const year = new Date().getFullYear();
+    const randomDigits = crypto.randomInt(100000, 999999);
+    return `CHAT-${randomDigits}-${year}`;
+};
+
+const formatFileSize = (bytes) => {
+    if (!bytes) return null;
+    if (bytes < 1024 * 1024) {
+        return `${(bytes / 1024).toFixed(1)} KB`;
+    }
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+};
+
+
+// 1. START OR GET 1-ON-1 CHAT ROOM
+const startOrGetChat = async (req, res) => {
+    try {
+        const senderId = req.user.id;
+        const receiverId = req.params.receiverId;
+
+        if (!receiverId) {
+            return res.status(400).json({ message: "Receiver player ID is required" });
+        }
+
+        if (Number(senderId) === Number(receiverId)) {
+            return res.status(400).json({ message: "You cannot start a chat with yourself" });
+        }
+
+        const chatUid = generateChatUid();
+        const chat = await getOrCreateChat(senderId, receiverId, chatUid);
+
+        return res.status(200).json({
+            message: "Chat room ready",
+            chat
+        });
+    } catch (err) {
+        console.error("startOrGetChat error:", err.message);
+        if (err.code === "23503") {
+            return res.status(404).json({ message: "Player not found" });
+        }
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 2. GET USER'S INBOX
+const viewInbox = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const chats = await getUserChats(userId);
+
+        return res.status(200).json({
+            message: "Inbox fetched successfully",
+            count: chats.length,
+            chats
+        });
+    } catch (err) {
+        console.error("viewInbox error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 3. SEND MESSAGE (REST + REAL-TIME SOCKET EMIT)
+const sendChatMessage = async (req, res) => {
+    try {
+        const senderId = Number(req.user.id);
+        const chatIdentifier = req.params.chatId;
+        const {
+            message_type,
+            content,
+            media_duration,
+            reply_to_message_id
+        } = req.body;
+
+        const chat = await getChatById(chatIdentifier);
+        if (!chat) {
+            return res.status(404).json({ message: "Chat room not found" });
+        }
+
+        if (Number(chat.user1_id) !== senderId && Number(chat.user2_id) !== senderId) {
+            return res.status(403).json({ message: "Access denied to this chat room" });
+        }
+
+        const receiverId =
+            Number(chat.user1_id) === senderId
+                ? Number(chat.user2_id)
+                : Number(chat.user1_id);
+
+        const allowedTypes = ["text", "voice", "image", "video", "file", "sticker"];
+        const msgType = message_type && allowedTypes.includes(message_type)
+            ? message_type
+            : req.file
+                ? "file"
+                : "text";
+
+        let mediaUrl = null;
+        let fileName = null;
+        let fileSize = null;
+
+        if (req.file) {
+            const baseUrl = `${req.protocol}://${req.get("host")}`;
+            mediaUrl = `${baseUrl}/uploads/chat/${req.file.filename}`;
+            fileName = req.file.originalname;
+            fileSize = formatFileSize(req.file.size);
+        }
+
+        if (msgType === "text" && (!content || content.trim() === "")) {
+            return res.status(400).json({ message: "Message content cannot be empty" });
+        }
+
+        if (msgType !== "text" && !mediaUrl && !content) {
+            return res.status(400).json({ message: `Media file is required for ${msgType} message` });
+        }
+
+        const savedMessage = await sendMessage({
+            chat_id: chat.id,
+            sender_id: senderId,
+            receiver_id: receiverId,
+            message_type: msgType,
+            content: content ? content.trim() : null,
+            media_url: mediaUrl,
+            media_duration: media_duration ? parseInt(media_duration, 10) : null,
+            file_name: fileName,
+            file_size: fileSize,
+            reply_to_message_id: reply_to_message_id ? parseInt(reply_to_message_id, 10) : null
+        });
+
+        // Emit real-time Socket.IO events
+        const io = req.app.get("io");
+        if (io) {
+            io.to(`chat_${chat.id}`).emit("new_message", savedMessage);
+            io.to(`user_${receiverId}`).emit("inbox_updated", {
+                chat_id: chat.id,
+                chat_uid: chat.chat_uid,
+                message: savedMessage
+            });
+        }
+
+        return res.status(201).json({
+            message: msgType === "voice" ? "Voice message sent" : "Message sent",
+            data: savedMessage
+        });
+    } catch (err) {
+        console.error("sendChatMessage error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 4. GET CHAT HISTORY
+const viewChatHistory = async (req, res) => {
+    try {
+        const userId = Number(req.user.id);
+        const chatIdentifier = req.params.chatId;
+        const limit = parseInt(req.query.limit, 10) || 50;
+        const offset = parseInt(req.query.offset, 10) || 0;
+
+        const chat = await getChatById(chatIdentifier);
+        if (!chat) {
+            return res.status(404).json({ message: "Chat room not found" });
+        }
+
+        if (Number(chat.user1_id) !== userId && Number(chat.user2_id) !== userId) {
+            return res.status(403).json({ message: "Access denied to this chat room" });
+        }
+
+        const messages = await getChatMessages(chat.id, userId, limit, offset);
+
+        return res.status(200).json({
+            message: "Chat history fetched successfully",
+            chat_id: chat.id,
+            chat_uid: chat.chat_uid,
+            count: messages.length,
+            messages
+        });
+    } catch (err) {
+        console.error("viewChatHistory error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 5. MARK MESSAGES AS READ
+const markChatAsRead = async (req, res) => {
+    try {
+        const readerId = Number(req.user.id);
+        const chatIdentifier = req.params.chatId;
+
+        const chat = await getChatById(chatIdentifier);
+        if (!chat) {
+            return res.status(404).json({ message: "Chat room not found" });
+        }
+
+        if (Number(chat.user1_id) !== readerId && Number(chat.user2_id) !== readerId) {
+            return res.status(403).json({ message: "Access denied to this chat room" });
+        }
+
+        const updatedRows = await markMessagesRead(chat.id, readerId);
+        const readMessageIds = updatedRows.map((row) => row.id);
+
+        const io = req.app.get("io");
+        if (io && readMessageIds.length > 0) {
+            io.to(`chat_${chat.id}`).emit("messages_read", {
+                chat_id: chat.id,
+                reader_id: readerId,
+                read_message_ids: readMessageIds
+            });
+        }
+
+        return res.status(200).json({
+            message: "Messages marked as read",
+            chat_id: chat.id,
+            read_message_ids: readMessageIds
+        });
+    } catch (err) {
+        console.error("markChatAsRead error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 6. REACT TO MESSAGE
+const reactToMessage = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const messageId = req.params.messageId;
+        const { emoji } = req.body;
+
+        const updatedMessage = await toggleMessageReaction(messageId, userId, emoji || null);
+        if (!updatedMessage) {
+            return res.status(404).json({ message: "Message not found" });
+        }
+
+        const io = req.app.get("io");
+        if (io) {
+            io.to(`chat_${updatedMessage.chat_id}`).emit("message_reacted", {
+                message_id: updatedMessage.id,
+                reactions: updatedMessage.reactions
+            });
+        }
+
+        return res.status(200).json({ message: "Reaction updated", data: updatedMessage });
+    } catch (err) {
+        console.error("reactToMessage error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 7. EDIT MESSAGE
+const editChatMessage = async (req, res) => {
+    try {
+        const senderId = req.user.id;
+        const messageId = req.params.messageId;
+        const { content } = req.body;
+
+        if (!content || content.trim() === "") {
+            return res.status(400).json({ message: "Updated message content is required" });
+        }
+
+        const updatedMessage = await editMessage(messageId, senderId, content.trim());
+        if (!updatedMessage) {
+            return res.status(404).json({ message: "Message not found or you are not allowed to edit it" });
+        }
+
+        const io = req.app.get("io");
+        if (io) {
+            io.to(`chat_${updatedMessage.chat_id}`).emit("message_edited", updatedMessage);
+        }
+
+        return res.status(200).json({ message: "Message edited successfully", data: updatedMessage });
+    } catch (err) {
+        console.error("editChatMessage error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 8. DELETE MESSAGE
+const removeChatMessage = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const messageId = req.params.messageId;
+        const forEveryone = req.query.forEveryone === "true" || req.body?.forEveryone === true;
+
+        const deletedMessage = await deleteMessage(messageId, userId, forEveryone);
+        if (!deletedMessage) {
+            return res.status(404).json({ message: "Message not found or you cannot delete it for everyone" });
+        }
+
+        const io = req.app.get("io");
+        if (io && forEveryone) {
+            io.to(`chat_${deletedMessage.chat_id}`).emit("message_deleted", {
+                message_id: deletedMessage.id,
+                chat_id: deletedMessage.chat_id
+            });
+        }
+
+        return res.status(200).json({
+            message: forEveryone ? "Message deleted for everyone" : "Message deleted for you",
+            data: deletedMessage
+        });
+    } catch (err) {
+        console.error("removeChatMessage error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 9. PIN / UNPIN MESSAGE
+const pinChatMessage = async (req, res) => {
+    try {
+        const messageId = req.params.messageId;
+        const updatedMessage = await togglePinMessage(messageId);
+        if (!updatedMessage) {
+            return res.status(404).json({ message: "Message not found" });
+        }
+
+        const io = req.app.get("io");
+        if (io) {
+            io.to(`chat_${updatedMessage.chat_id}`).emit("message_pinned", {
+                message_id: updatedMessage.id,
+                is_pinned: updatedMessage.is_pinned
+            });
+        }
+
+        return res.status(200).json({
+            message: updatedMessage.is_pinned ? "Message pinned" : "Message unpinned",
+            data: updatedMessage
+        });
+    } catch (err) {
+        console.error("pinChatMessage error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 10. SEARCH MESSAGES
+const searchMessagesInChat = async (req, res) => {
+    try {
+        const userId = Number(req.user.id);
+        const chatIdentifier = req.params.chatId;
+        const searchTerm = req.query.q?.trim();
+
+        if (!searchTerm) {
+            return res.status(400).json({ message: "Search query 'q' is required" });
+        }
+
+        const chat = await getChatById(chatIdentifier);
+        if (!chat) {
+            return res.status(404).json({ message: "Chat room not found" });
+        }
+
+        if (Number(chat.user1_id) !== userId && Number(chat.user2_id) !== userId) {
+            return res.status(403).json({ message: "Access denied to this chat room" });
+        }
+
+        const results = await searchChatMessages(chat.id, userId, searchTerm);
+
+        return res.status(200).json({
+            message: "Search results fetched successfully",
+            count: results.length,
+            messages: results
+        });
+    } catch (err) {
+        console.error("searchMessagesInChat error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+module.exports = {
+    startOrGetChat,
+    viewInbox,
+    sendChatMessage,
+    viewChatHistory,
+    markChatAsRead,
+    reactToMessage,
+    editChatMessage,
+    removeChatMessage,
+    pinChatMessage,
+    searchMessagesInChat
+};
+
+route / chat / privateChat.js
+
+const express = require("express");
+const router = express.Router();
+
+const {
+    startOrGetChat,
+    viewInbox,
+    sendChatMessage,
+    viewChatHistory,
+    markChatAsRead,
+    reactToMessage,
+    editChatMessage,
+    removeChatMessage,
+    pinChatMessage,
+    searchMessagesInChat
+} = require("../../controller/chatController/privateChatController");
+
+const uploadChatMedia = require("../../middleware/uploadprivatechat");
+const { verifyToken } = require("../../middleware/jwtauthication");
+
+// Mounted at /api/chatroute in app.js
+router.get("/inbox", verifyToken, viewInbox);
+router.post("/start/:receiverId", verifyToken, startOrGetChat);
+
+router.put("/message/:messageId/react", verifyToken, reactToMessage);
+router.put("/message/:messageId/edit", verifyToken, editChatMessage);
+router.put("/message/:messageId/pin", verifyToken, pinChatMessage);
+router.delete("/message/:messageId", verifyToken, removeChatMessage);
+
+router.post("/:chatId/send", verifyToken, uploadChatMedia.single("media"), sendChatMessage);
+router.get("/:chatId/messages", verifyToken, viewChatHistory);
+router.put("/:chatId/read", verifyToken, markChatAsRead);
+router.get("/:chatId/search", verifyToken, searchMessagesInChat);
+
+module.exports = router;

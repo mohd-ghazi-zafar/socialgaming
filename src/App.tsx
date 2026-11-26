@@ -11,7 +11,8 @@ import { MomentPage } from './pages/MomentPage'
 import { MessagesPage } from './pages/MessagesPage'
 import { SearchPage } from './pages/SearchPage'
 import { AccountPage } from './pages/AccountPage'
-import { getStoredAuth, setStoredAuth, clearStoredAuth } from './services/api'
+import { getStoredAuth, setStoredAuth, clearStoredAuth, parseJwt } from './services/api'
+import { connectChatUser, disconnectChatSocket } from './services/chatSocket'
 import type { AppTab, GameType, DirectoryUser } from './types/contracts'
 
 type ScreenState = 'splash' | 'main' | 'register' | 'id-login' | 'platform'
@@ -23,11 +24,16 @@ export default function App() {
   const [coins, setCoins] = useState(25400)
   const [gems] = useState(180)
 
-  // Restore authenticated session from localStorage
+  // Restore authenticated session from localStorage & connect presence
   useEffect(() => {
     const stored = getStoredAuth()
     if (stored?.user && stored?.token) {
       setAuthUser(stored.user)
+      const parsed = parseJwt(stored.token)
+      const activeId = stored.user.id || parsed?.id
+      if (activeId) {
+        connectChatUser(activeId)
+      }
     } else {
       setAuthUser(null)
     }
@@ -37,11 +43,17 @@ export default function App() {
     setAuthUser(user)
     if (token) {
       setStoredAuth(token, user, user?.user_uid || user?.unique_id)
+      const parsed = parseJwt(token)
+      const activeId = user?.id || parsed?.id
+      if (activeId) {
+        connectChatUser(activeId)
+      }
     }
     setCurrentScreen('platform')
   }
 
   const handleLogout = () => {
+    disconnectChatSocket()
     clearStoredAuth()
     setAuthUser(null)
     setCurrentScreen('main')
