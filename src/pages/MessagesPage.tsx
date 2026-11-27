@@ -234,6 +234,12 @@ export const MessagesPage: React.FC = () => {
   const [selectedFriendIds, setSelectedFriendIds] = useState<number[]>([])
   const [isChatMenuOpen, setIsChatMenuOpen] = useState(false)
 
+  // Filtered friends list (excluding currently logged in user)
+  const currentUid = getStoredAuth()?.unique_id || getStoredAuth()?.user?.user_uid
+  const friendsList = useMemo(() => {
+    return allDbUsers.filter((u) => u.user_uid !== currentUid)
+  }, [allDbUsers, currentUid])
+
   // Real-time Online Users Presence for Top Horizontal Friends Row
   const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set())
 
@@ -279,7 +285,7 @@ export const MessagesPage: React.FC = () => {
     try {
       await unfollowUser(activeChat.userId, token)
       showToast(`Removed ${activeChat.name} from friends`)
-      setFriendsList((prev) => prev.filter((f) => f.id !== activeChat.userId))
+      setAllDbUsers((prev) => prev.filter((f) => f.id !== activeChat.userId))
       setIsChatMenuOpen(false)
     } catch (err: any) {
       showToast(err.message || 'Failed to remove friend')
@@ -295,7 +301,7 @@ export const MessagesPage: React.FC = () => {
     try {
       await blockUser(activeChat.userId, token)
       showToast(`Blocked ${activeChat.name}`)
-      setFriendsList((prev) => prev.filter((f) => f.id !== activeChat.userId))
+      setAllDbUsers((prev) => prev.filter((f) => f.id !== activeChat.userId))
       setActiveChat(null)
       setIsChatMenuOpen(false)
     } catch (err: any) {
@@ -805,10 +811,6 @@ export const MessagesPage: React.FC = () => {
       showToast('Request declined')
     }
   }
-
-  // Filtered friends list (excluding currently logged in user)
-  const currentUid = getStoredAuth()?.unique_id || getStoredAuth()?.user?.user_uid
-  const friendsList = allDbUsers.filter((u) => u.user_uid !== currentUid)
 
   // Alphabetical groupings computed purely dynamically from real backend records
   const groupedFriends = groupUsersAlphabetically(friendsList)
