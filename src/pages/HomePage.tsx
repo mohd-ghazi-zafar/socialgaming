@@ -13,6 +13,7 @@ interface HomePageProps {
   onQuickMatchLaunch: (game: GameType) => void
   onOpenWallet?: () => void
   onOpenSearch?: () => void
+  onOpenMessages?: (friend: any) => void
 }
 
 export const HomePage: React.FC<HomePageProps> = ({
@@ -22,6 +23,7 @@ export const HomePage: React.FC<HomePageProps> = ({
   onQuickMatchLaunch,
   onOpenWallet,
   onOpenSearch,
+  onOpenMessages,
 }) => {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
 
@@ -66,7 +68,10 @@ export const HomePage: React.FC<HomePageProps> = ({
       <GameCardsGrid onSelectGame={handleSelectGame} />
 
       {/* 4. Active Friends Rooms (Find Friend List) */}
-      <FindFriendSection onJoinRoom={(roomId) => onJoinRoomSession(roomId)} />
+      <FindFriendSection
+        onJoinRoom={(roomId) => onJoinRoomSession(roomId)}
+        onOpenMessages={onOpenMessages}
+      />
 
       {/* Create Room Modal */}
       <CreateRoomModal

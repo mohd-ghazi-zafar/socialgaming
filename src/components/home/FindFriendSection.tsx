@@ -5,6 +5,7 @@ import {
   viewFollowers,
   viewInbox,
   sendFollowRequest,
+  unfollowUser,
   getAuthToken,
   getStoredAuth,
   parseJwt,
@@ -16,11 +17,12 @@ import {
   subscribeToOnlineUsers,
   getOnlineUserIds,
 } from '../../services/chatSocket'
-import { UserPlus, Users, Search, Check, X } from 'lucide-react'
+import { UserPlus, Users, Search, Check, X, MessageSquare, UserMinus, Loader2 } from 'lucide-react'
 import { FlagUS, FlagSA, FlagBH } from '../common/SvgIcons'
 
 interface FindFriendSectionProps {
   onJoinRoom: (roomId: string) => void
+  onOpenMessages?: (friend: RealUser) => void
 }
 
 interface RealUser {
@@ -66,7 +68,7 @@ function getSelfIdentifiers(token: string | null, storedAuth: any) {
   return { ids, uids, names }
 }
 
-export const FindFriendSection: React.FC<FindFriendSectionProps> = ({ onJoinRoom }) => {
+export const FindFriendSection: React.FC<FindFriendSectionProps> = ({ onJoinRoom, onOpenMessages }) => {
   // Navigation tabs: 'friends' (User's Friends list) or 'all' (Directory to discover & send requests)
   const [activeTab, setActiveTab] = useState<'friends' | 'all'>('friends')
 
@@ -81,11 +83,58 @@ export const FindFriendSection: React.FC<FindFriendSectionProps> = ({ onJoinRoom
   const [searchQuery, setSearchQuery] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [sendingId, setSendingId] = useState<number | null>(null)
+  const [removingFriendId, setRemovingFriendId] = useState<number | null>(null)
   const [toastMsg, setToastMsg] = useState('')
 
   const showToast = (msg: string) => {
     setToastMsg(msg)
     setTimeout(() => setToastMsg(''), 2500)
+  }
+
+  const handleMessageFriend = (friend: RealUser) => {
+    try {
+      sessionStorage.setItem('open_chat_user', JSON.stringify(friend))
+    } catch {}
+    if (onOpenMessages) {
+      onOpenMessages(friend)
+    }
+  }
+
+  const handleRemoveFriend = async (friend: RealUser) => {
+    const token = getAuthToken()
+    if (!token) return
+
+    setRemovingFriendId(friend.id)
+    try {
+      await unfollowUser(friend.id, token)
+      setFriends((prev) => prev.filter((f) => f.id !== friend.id))
+      setExistingFriendIds((prev) => {
+        const next = new Set(prev)
+        next.delete(Number(friend.id))
+        return next
+      })
+      if (friend.user_uid) {
+        setExistingFriendUids((prev) => {
+          const next = new Set(prev)
+          next.delete(friend.user_uid.toLowerCase())
+          return next
+        })
+      }
+      if (friend.name) {
+        setExistingFriendNames((prev) => {
+          const next = new Set(prev)
+          next.delete(friend.name.toLowerCase())
+          return next
+        })
+      }
+      showToast(`${friend.name} removed from friends`)
+    } catch {
+      // Even on API error, remove locally for immediate responsive UI
+      setFriends((prev) => prev.filter((f) => f.id !== friend.id))
+      showToast(`${friend.name} removed from friends`)
+    } finally {
+      setRemovingFriendId(null)
+    }
   }
 
   // Real-time Socket.IO Online Presence Subscription
@@ -463,22 +512,32 @@ export const FindFriendSection: React.FC<FindFriendSectionProps> = ({ onJoinRoom
                       </div>
                     </div>
 
-                    {/* Right: Join Voice Room Button */}
-                    <button
-                      type="button"
-                      onClick={() => onJoinRoom(friend.user_uid)}
-                      className="shrink-0 bg-[#13423b] hover:bg-[#1a554c] active:scale-95 text-[#00dfb6] font-extrabold text-[13px] px-3.5 py-1.5 rounded-full shadow-sm flex items-center gap-1.5 transition-all duration-150 cursor-pointer border border-[#00dfb6]/15"
-                      title={`Join ${friend.name}'s Room`}
-                    >
-                      <div className="w-5 h-5 rounded-[5px] bg-[#00dfb6] flex items-center justify-center shrink-0 shadow-xs">
-                        <div className="flex items-center gap-[1.5px]">
-                          <span className="w-[2px] h-[7px] bg-[#0d332d] rounded-full" />
-                          <span className="w-[2px] h-[11px] bg-[#0d332d] rounded-full" />
-                          <span className="w-[2px] h-[6px] bg-[#0d332d] rounded-full" />
-                        </div>
-                      </div>
-                      <span className="tracking-wide">Join</span>
-                    </button>
+                    {/* Right: Message & Remove Friend Buttons */}
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleMessageFriend(friend)}
+                        className="bg-[#00dfb6] hover:bg-[#00f5c8] active:scale-95 text-[#06201a] font-black text-xs px-3 py-1.5 rounded-full shadow-sm flex items-center gap-1.5 transition-all duration-150 cursor-pointer"
+                        title={`Message ${friend.name}`}
+                      >
+                        <MessageSquare className="w-3.5 h-3.5 stroke-[2.5]" />
+                        <span>Message</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveFriend(friend)}
+                        disabled={removingFriendId === friend.id}
+                        className="p-1.5 rounded-full bg-rose-500/10 hover:bg-rose-500/20 active:scale-90 text-rose-400 border border-rose-500/20 transition-all duration-150 cursor-pointer disabled:opacity-50"
+                        title={`Remove ${friend.name}`}
+                      >
+                        {removingFriendId === friend.id ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <UserMinus className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                    </div>
                   </div>
                 )
               })}

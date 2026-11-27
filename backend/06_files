@@ -1,0 +1,851 @@
+const sendChatMessage = async (req, res) => {
+    try {
+        const senderId = Number(req.user.id);
+        const chatIdentifier = req.params.chatId;
+        const {
+            message_type,
+            content,
+            media_duration,
+              waveform,
+            reply_to_message_id
+        } = req.body;
+
+        const chat = await getChatById(chatIdentifier);
+        if (!chat) {
+            return res.status(404).json({ message: "Chat room not found" });
+        }
+
+        if (Number(chat.user1_id) !== senderId && Number(chat.user2_id) !== senderId) {
+            return res.status(403).json({ message: "Access denied to this chat room" });
+        }
+
+        const receiverId =
+            Number(chat.user1_id) === senderId
+                ? Number(chat.user2_id)
+                : Number(chat.user1_id);
+
+        // Extract uploaded file whether sent under 'media' or 'voice' field
+        const uploadedFile =
+            req.file ||
+            req.files?.media?.[0] ||
+            req.files?.voice?.[0] ||
+            null;
+
+        const allowedTypes = ["text", "voice", "image", "video", "file", "sticker"];
+        const msgType = message_type && allowedTypes.includes(message_type)
+            ? message_type
+            : uploadedFile
+            ? uploadedFile.mimetype.startsWith("audio/")
+                ? "voice"
+                : "file"
+            : "text";
+
+        let mediaUrl = null;
+        let fileName = null;
+        let fileSize = null;
+
+        if (uploadedFile) {
+            const baseUrl = `${req.protocol}://${req.get("host")}`;
+            mediaUrl = `${baseUrl}/uploads/chat/${uploadedFile.filename}`;
+            fileName = uploadedFile.originalname;
+            fileSize = formatFileSize(uploadedFile.size);
+        }
+
+        if (msgType === "text" && (!content || content.trim() === "")) {
+            return res.status(400).json({ message: "Message content cannot be empty" });
+        }
+
+        if (msgType !== "text" && !mediaUrl && !content) {
+            return res.status(400).json({ message: `Audio/Media file is required for ${msgType} message` });
+        }
+
+        let parsedWaveform = [];
+        if (waveform) {
+            try {
+                parsedWaveform = typeof waveform === "string" ? JSON.parse(waveform) : waveform;
+            } catch (_) {
+                parsedWaveform = [];
+            }
+        }
+
+        const savedMessage = await sendMessage({
+            chat_id: chat.id,
+            sender_id: senderId,
+            receiver_id: receiverId,
+            message_type: msgType,
+            content: content ? content.trim() : null,
+            media_url: mediaUrl,
+            media_duration: media_duration ? parseInt(media_duration, 10) : null,
+            waveform: parsedWaveform,
+            file_name: fileName,
+            file_size: fileSize,
+            reply_to_message_id: reply_to_message_id ? parseInt(reply_to_message_id, 10) : null
+        });
+
+        const io = req.app.get("io");
+        if (io) {
+            io.to(`chat_${chat.id}`).emit("new_message", savedMessage);
+            io.to(`user_${receiverId}`).emit("inbox_updated", {
+                chat_id: chat.id,
+                chat_uid: chat.chat_uid,
+                message: savedMessage
+            });
+        }
+
+        return res.status(201).json({
+            message: msgType === "voice" ? "Voice note sent" : "Message sent",
+            data: savedMessage
+        });
+    } catch (err) {
+        console.error("sendChatMessage error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 5. DEDICATED SEND VOICE NOTE ENDPOINT
+const sendVoiceNote = async (req, res) => {
+    const uploadedFile = req.file || req.files?.voice?.[0] || null;
+    if (!uploadedFile) {
+        return res.status(400).json({ message: "Voice audio file ('voice') is required" });
+    }
+    req.body.message_type = "voice";
+    return sendChatMessage(req, res);
+};
+
+
+
+// // 5. DEDICATED SEND VOICE NOTE ENDPOINT
+// const sendVoiceNote = async (req, res) => {
+//     if (!req.file) {
+//         return res.status(400).json({ message: "Voice audio file ('voice') is required" });
+//     }
+//     req.body.message_type = "voice";
+//     return sendChatMessage(req, res);
+// };
+
+
+// 6. MARK VOICE NOTE AS PLAYED
+const voiceNotePlayed = async (req, res) => {
+    try {
+        const listenerId = req.user.id;
+        const messageId = req.params.messageId;
+
+        const updatedMessage = await markVoiceNotePlayed(messageId, listenerId);
+        if (!updatedMessage) {
+            return res.status(404).json({ message: "Voice note not found or already marked" });
+        }
+
+        const io = req.app.get("io");
+        if (io) {
+            io.to(`chat_${updatedMessage.chat_id}`).emit("voice_played", {
+                message_id: updatedMessage.id,
+                chat_id: updatedMessage.chat_id,
+                is_voice_played: true
+            });
+        }
+
+        return res.status(200).json({
+            message: "Voice note marked as played",
+            data: updatedMessage
+        });
+    } catch (err) {
+        console.error("voiceNotePlayed error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 7. GET CHAT HISTORY
+const viewChatHistory = async (req, res) => {
+    try {
+        const userId = Number(req.user.id);
+        const chatIdentifier = req.params.chatId;
+        const limit = parseInt(req.query.limit, 10) || 50;
+        const offset = parseInt(req.query.offset, 10) || 0;
+
+        const chat = await getChatById(chatIdentifier);
+        if (!chat) {
+            return res.status(404).json({ message: "Chat room not found" });
+        }
+
+        if (Number(chat.user1_id) !== userId && Number(chat.user2_id) !== userId) {
+            return res.status(403).json({ message: "Access denied to this chat room" });
+        }
+
+        const messages = await getChatMessages(chat.id, userId, limit, offset);
+
+        return res.status(200).json({
+            message: "Chat history fetched successfully",
+            chat_id: chat.id,
+            chat_uid: chat.chat_uid,
+            count: messages.length,
+            messages
+        });
+    } catch (err) {
+        console.error("viewChatHistory error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 8. MARK MESSAGES AS READ
+const markChatAsRead = async (req, res) => {
+    try {
+        const readerId = Number(req.user.id);
+        const chatIdentifier = req.params.chatId;
+
+        const chat = await getChatById(chatIdentifier);
+        if (!chat) {
+            return res.status(404).json({ message: "Chat room not found" });
+        }
+
+        if (Number(chat.user1_id) !== readerId && Number(chat.user2_id) !== readerId) {
+            return res.status(403).json({ message: "Access denied to this chat room" });
+        }
+
+        const updatedRows = await markMessagesRead(chat.id, readerId);
+        const readMessageIds = updatedRows.map((row) => row.id);
+
+        const io = req.app.get("io");
+        if (io && readMessageIds.length > 0) {
+            io.to(`chat_${chat.id}`).emit("messages_read", {
+                chat_id: chat.id,
+                reader_id: readerId,
+                read_message_ids: readMessageIds
+            });
+        }
+
+        return res.status(200).json({
+            message: "Messages marked as read",
+            chat_id: chat.id,
+            read_message_ids: readMessageIds
+        });
+    } catch (err) {
+        console.error("markChatAsRead error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 9. REACT TO MESSAGE
+const reactToMessage = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const messageId = req.params.messageId;
+        const { emoji } = req.body;
+
+        const updatedMessage = await toggleMessageReaction(messageId, userId, emoji || null);
+        if (!updatedMessage) {
+            return res.status(404).json({ message: "Message not found" });
+        }
+
+        const io = req.app.get("io");
+        if (io) {
+            io.to(`chat_${updatedMessage.chat_id}`).emit("message_reacted", {
+                message_id: updatedMessage.id,
+                reactions: updatedMessage.reactions
+            });
+        }
+
+        return res.status(200).json({ message: "Reaction updated", data: updatedMessage });
+    } catch (err) {
+        console.error("reactToMessage error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 10. EDIT TEXT MESSAGE
+const editChatMessage = async (req, res) => {
+    try {
+        const senderId = req.user.id;
+        const messageId = req.params.messageId;
+        const { content } = req.body;
+
+        if (!content || content.trim() === "") {
+            return res.status(400).json({ message: "Updated message content is required" });
+        }
+
+        const updatedMessage = await editMessage(messageId, senderId, content.trim());
+        if (!updatedMessage) {
+            return res.status(404).json({ message: "Message not found or you are not allowed to edit it" });
+        }
+
+        const io = req.app.get("io");
+        if (io) {
+            io.to(`chat_${updatedMessage.chat_id}`).emit("message_edited", updatedMessage);
+        }
+
+        return res.status(200).json({ message: "Message edited successfully", data: updatedMessage });
+    } catch (err) {
+        console.error("editChatMessage error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 11. DELETE MESSAGE
+const removeChatMessage = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const messageId = req.params.messageId;
+        const forEveryone = req.query.forEveryone === "true" || req.body?.forEveryone === true;
+
+        const deletedMessage = await deleteMessage(messageId, userId, forEveryone);
+        if (!deletedMessage) {
+            return res.status(404).json({ message: "Message not found or you cannot delete it for everyone" });
+        }
+
+        const io = req.app.get("io");
+        if (io && forEveryone) {
+            io.to(`chat_${deletedMessage.chat_id}`).emit("message_deleted", {
+                message_id: deletedMessage.id,
+                chat_id: deletedMessage.chat_id
+            });
+        }
+
+        return res.status(200).json({
+            message: forEveryone ? "Message deleted for everyone" : "Message deleted for you",
+            data: deletedMessage
+        });
+    } catch (err) {
+        console.error("removeChatMessage error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 12. PIN / UNPIN MESSAGE
+const pinChatMessage = async (req, res) => {
+    try {
+        const messageId = req.params.messageId;
+        const updatedMessage = await togglePinMessage(messageId);
+        if (!updatedMessage) {
+            return res.status(404).json({ message: "Message not found" });
+        }
+
+        const io = req.app.get("io");
+        if (io) {
+            io.to(`chat_${updatedMessage.chat_id}`).emit("message_pinned", {
+                message_id: updatedMessage.id,
+                is_pinned: updatedMessage.is_pinned
+            });
+        }
+
+        return res.status(200).json({
+            message: updatedMessage.is_pinned ? "Message pinned" : "Message unpinned",
+            data: updatedMessage
+        });
+    } catch (err) {
+        console.error("pinChatMessage error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 13. SEARCH MESSAGES
+const searchMessagesInChat = async (req, res) => {
+    try {
+        const userId = Number(req.user.id);
+        const chatIdentifier = req.params.chatId;
+        const searchTerm = req.query.q?.trim();
+
+        if (!searchTerm) {
+            return res.status(400).json({ message: "Search query 'q' is required" });
+        }
+
+        const chat = await getChatById(chatIdentifier);
+        if (!chat) {
+            return res.status(404).json({ message: "Chat room not found" });
+        }
+
+        if (Number(chat.user1_id) !== userId && Number(chat.user2_id) !== userId) {
+            return res.status(403).json({ message: "Access denied to this chat room" });
+        }
+
+        const results = await searchChatMessages(chat.id, userId, searchTerm);
+
+        return res.status(200).json({
+            message: "Search results fetched successfully",
+            count: results.length,
+            messages: results
+        });
+    } catch (err) {
+        console.error("searchMessagesInChat error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+module.exports = {
+    startOrGetChat,
+    viewInbox,
+    fetchUserOnlineStatus,
+    sendChatMessage,
+    sendVoiceNote,
+    voiceNotePlayed,
+    viewChatHistory,
+    markChatAsRead,
+    reactToMessage,
+    editChatMessage,
+    removeChatMessage,
+    pinChatMessage,
+    searchMessagesInChat
+};
+
+const sendChatMessage = async (req, res) => {
+    try {
+        const senderId = Number(req.user.id);
+        const chatIdentifier = req.params.chatId;
+        const {
+            message_type,
+            content,
+            media_duration,
+            waveform,
+            reply_to_message_id
+        } = req.body;
+
+        const chat = await getChatById(chatIdentifier);
+        if (!chat) {
+            return res.status(404).json({ message: "Chat room not found" });
+        }
+
+        if (Number(chat.user1_id) !== senderId && Number(chat.user2_id) !== senderId) {
+            return res.status(403).json({ message: "Access denied to this chat room" });
+        }
+
+        const receiverId =
+            Number(chat.user1_id) === senderId
+                ? Number(chat.user2_id)
+                : Number(chat.user1_id);
+
+        // Extract uploaded file whether sent under 'media' or 'voice' field
+        const uploadedFile =
+            req.file ||
+            req.files?.media?.[0] ||
+            req.files?.voice?.[0] ||
+            null;
+
+        const allowedTypes = ["text", "voice", "image", "video", "file", "sticker"];
+        const msgType = message_type && allowedTypes.includes(message_type)
+            ? message_type
+            : uploadedFile
+            ? uploadedFile.mimetype.startsWith("audio/")
+                ? "voice"
+                : "file"
+            : "text";
+
+        let mediaUrl = null;
+        let fileName = null;
+        let fileSize = null;
+
+        if (uploadedFile) {
+            const baseUrl = `${req.protocol}://${req.get("host")}`;
+            mediaUrl = `${baseUrl}/uploads/chat/${uploadedFile.filename}`;
+            fileName = uploadedFile.originalname;
+            fileSize = formatFileSize(uploadedFile.size);
+        }
+
+        if (msgType === "text" && (!content || content.trim() === "")) {
+            return res.status(400).json({ message: "Message content cannot be empty" });
+        }
+
+        if (msgType !== "text" && !mediaUrl && !content) {
+            return res.status(400).json({ message: `Audio/Media file is required for ${msgType} message` });
+        }
+
+        let parsedWaveform = [];
+        if (waveform) {
+            try {
+                parsedWaveform = typeof waveform === "string" ? JSON.parse(waveform) : waveform;
+            } catch (_) {
+                parsedWaveform = [];
+            }
+        }
+
+        const savedMessage = await sendMessage({
+            chat_id: chat.id,
+            sender_id: senderId,
+            receiver_id: receiverId,
+            message_type: msgType,
+            content: content ? content.trim() : null,
+            media_url: mediaUrl,
+            media_duration: media_duration ? parseInt(media_duration, 10) : null,
+            waveform: parsedWaveform,
+            file_name: fileName,
+            file_size: fileSize,
+            reply_to_message_id: reply_to_message_id ? parseInt(reply_to_message_id, 10) : null
+        });
+
+        const io = req.app.get("io");
+        if (io) {
+            io.to(`chat_${chat.id}`).emit("new_message", savedMessage);
+            io.to(`user_${receiverId}`).emit("inbox_updated", {
+                chat_id: chat.id,
+                chat_uid: chat.chat_uid,
+                message: savedMessage
+            });
+        }
+
+        return res.status(201).json({
+            message: msgType === "voice" ? "Voice note sent" : "Message sent",
+            data: savedMessage
+        });
+    } catch (err) {
+        console.error("sendChatMessage error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 5. DEDICATED SEND VOICE NOTE ENDPOINT
+const sendVoiceNote = async (req, res) => {
+    const uploadedFile = req.file || req.files?.voice?.[0] || null;
+    if (!uploadedFile) {
+        return res.status(400).json({ message: "Voice audio file ('voice') is required" });
+    }
+    req.body.message_type = "voice";
+    return sendChatMessage(req, res);
+};
+
+
+
+// // 5. DEDICATED SEND VOICE NOTE ENDPOINT
+// const sendVoiceNote = async (req, res) => {
+//     if (!req.file) {
+//         return res.status(400).json({ message: "Voice audio file ('voice') is required" });
+//     }
+//     req.body.message_type = "voice";
+//     return sendChatMessage(req, res);
+// };
+
+
+// 6. MARK VOICE NOTE AS PLAYED
+const voiceNotePlayed = async (req, res) => {
+    try {
+        const listenerId = req.user.id;
+        const messageId = req.params.messageId;
+
+        const updatedMessage = await markVoiceNotePlayed(messageId, listenerId);
+        if (!updatedMessage) {
+            return res.status(404).json({ message: "Voice note not found or already marked" });
+        }
+
+        const io = req.app.get("io");
+        if (io) {
+            io.to(`chat_${updatedMessage.chat_id}`).emit("voice_played", {
+                message_id: updatedMessage.id,
+                chat_id: updatedMessage.chat_id,
+                is_voice_played: true
+            });
+        }
+
+        return res.status(200).json({
+            message: "Voice note marked as played",
+            data: updatedMessage
+        });
+    } catch (err) {
+        console.error("voiceNotePlayed error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 7. GET CHAT HISTORY
+const viewChatHistory = async (req, res) => {
+    try {
+        const userId = Number(req.user.id);
+        const chatIdentifier = req.params.chatId;
+        const limit = parseInt(req.query.limit, 10) || 50;
+        const offset = parseInt(req.query.offset, 10) || 0;
+
+        const chat = await getChatById(chatIdentifier);
+        if (!chat) {
+            return res.status(404).json({ message: "Chat room not found" });
+        }
+
+        if (Number(chat.user1_id) !== userId && Number(chat.user2_id) !== userId) {
+            return res.status(403).json({ message: "Access denied to this chat room" });
+        }
+
+        const messages = await getChatMessages(chat.id, userId, limit, offset);
+
+        return res.status(200).json({
+            message: "Chat history fetched successfully",
+            chat_id: chat.id,
+            chat_uid: chat.chat_uid,
+            count: messages.length,
+            messages
+        });
+    } catch (err) {
+        console.error("viewChatHistory error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 8. MARK MESSAGES AS READ
+const markChatAsRead = async (req, res) => {
+    try {
+        const readerId = Number(req.user.id);
+        const chatIdentifier = req.params.chatId;
+
+        const chat = await getChatById(chatIdentifier);
+        if (!chat) {
+            return res.status(404).json({ message: "Chat room not found" });
+        }
+
+        if (Number(chat.user1_id) !== readerId && Number(chat.user2_id) !== readerId) {
+            return res.status(403).json({ message: "Access denied to this chat room" });
+        }
+
+        const updatedRows = await markMessagesRead(chat.id, readerId);
+        const readMessageIds = updatedRows.map((row) => row.id);
+
+        const io = req.app.get("io");
+        if (io && readMessageIds.length > 0) {
+            io.to(`chat_${chat.id}`).emit("messages_read", {
+                chat_id: chat.id,
+                reader_id: readerId,
+                read_message_ids: readMessageIds
+            });
+        }
+
+        return res.status(200).json({
+            message: "Messages marked as read",
+            chat_id: chat.id,
+            read_message_ids: readMessageIds
+        });
+    } catch (err) {
+        console.error("markChatAsRead error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 9. REACT TO MESSAGE
+const reactToMessage = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const messageId = req.params.messageId;
+        const { emoji } = req.body;
+
+        const updatedMessage = await toggleMessageReaction(messageId, userId, emoji || null);
+        if (!updatedMessage) {
+            return res.status(404).json({ message: "Message not found" });
+        }
+
+        const io = req.app.get("io");
+        if (io) {
+            io.to(`chat_${updatedMessage.chat_id}`).emit("message_reacted", {
+                message_id: updatedMessage.id,
+                reactions: updatedMessage.reactions
+            });
+        }
+
+        return res.status(200).json({ message: "Reaction updated", data: updatedMessage });
+    } catch (err) {
+        console.error("reactToMessage error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 10. EDIT TEXT MESSAGE
+const editChatMessage = async (req, res) => {
+    try {
+        const senderId = req.user.id;
+        const messageId = req.params.messageId;
+        const { content } = req.body;
+
+        if (!content || content.trim() === "") {
+            return res.status(400).json({ message: "Updated message content is required" });
+        }
+
+        const updatedMessage = await editMessage(messageId, senderId, content.trim());
+        if (!updatedMessage) {
+            return res.status(404).json({ message: "Message not found or you are not allowed to edit it" });
+        }
+
+        const io = req.app.get("io");
+        if (io) {
+            io.to(`chat_${updatedMessage.chat_id}`).emit("message_edited", updatedMessage);
+        }
+
+        return res.status(200).json({ message: "Message edited successfully", data: updatedMessage });
+    } catch (err) {
+        console.error("editChatMessage error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 11. DELETE MESSAGE
+const removeChatMessage = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const messageId = req.params.messageId;
+        const forEveryone = req.query.forEveryone === "true" || req.body?.forEveryone === true;
+
+        const deletedMessage = await deleteMessage(messageId, userId, forEveryone);
+        if (!deletedMessage) {
+            return res.status(404).json({ message: "Message not found or you cannot delete it for everyone" });
+        }
+
+        const io = req.app.get("io");
+        if (io && forEveryone) {
+            io.to(`chat_${deletedMessage.chat_id}`).emit("message_deleted", {
+                message_id: deletedMessage.id,
+                chat_id: deletedMessage.chat_id
+            });
+        }
+
+        return res.status(200).json({
+            message: forEveryone ? "Message deleted for everyone" : "Message deleted for you",
+            data: deletedMessage
+        });
+    } catch (err) {
+        console.error("removeChatMessage error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 12. PIN / UNPIN MESSAGE
+const pinChatMessage = async (req, res) => {
+    try {
+        const messageId = req.params.messageId;
+        const updatedMessage = await togglePinMessage(messageId);
+        if (!updatedMessage) {
+            return res.status(404).json({ message: "Message not found" });
+        }
+
+        const io = req.app.get("io");
+        if (io) {
+            io.to(`chat_${updatedMessage.chat_id}`).emit("message_pinned", {
+                message_id: updatedMessage.id,
+                is_pinned: updatedMessage.is_pinned
+            });
+        }
+
+        return res.status(200).json({
+            message: updatedMessage.is_pinned ? "Message pinned" : "Message unpinned",
+            data: updatedMessage
+        });
+    } catch (err) {
+        console.error("pinChatMessage error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 13. SEARCH MESSAGES
+const searchMessagesInChat = async (req, res) => {
+    try {
+        const userId = Number(req.user.id);
+        const chatIdentifier = req.params.chatId;
+        const searchTerm = req.query.q?.trim();
+
+        if (!searchTerm) {
+            return res.status(400).json({ message: "Search query 'q' is required" });
+        }
+
+        const chat = await getChatById(chatIdentifier);
+        if (!chat) {
+            return res.status(404).json({ message: "Chat room not found" });
+        }
+
+        if (Number(chat.user1_id) !== userId && Number(chat.user2_id) !== userId) {
+            return res.status(403).json({ message: "Access denied to this chat room" });
+        }
+
+        const results = await searchChatMessages(chat.id, userId, searchTerm);
+
+        return res.status(200).json({
+            message: "Search results fetched successfully",
+            count: results.length,
+            messages: results
+        });
+    } catch (err) {
+        console.error("searchMessagesInChat error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+module.exports = {
+    startOrGetChat,
+    viewInbox,
+    fetchUserOnlineStatus,
+    sendChatMessage,
+    sendVoiceNote,
+    voiceNotePlayed,
+    viewChatHistory,
+    markChatAsRead,
+    reactToMessage,
+    editChatMessage,
+    removeChatMessage,
+    pinChatMessage,
+    searchMessagesInChat
+};
+
+
+
+
+
+
+
+
+const express = require("express");
+const router = express.Router();
+
+const {
+    startOrGetChat,
+    viewInbox,
+    fetchUserOnlineStatus,
+    sendChatMessage,
+    sendVoiceNote,
+    voiceNotePlayed,
+    viewChatHistory,
+    markChatAsRead,
+    reactToMessage,
+    editChatMessage,
+    removeChatMessage,
+    pinChatMessage,
+    searchMessagesInChat
+} = require("../../controller/chatController/privateChatController");
+
+const uploadChatMedia = require("../../middleware/uploadprivatechat");
+const { verifyToken } = require("../../middleware/jwtauthication");
+
+// Mounted at /api/chatroute
+router.get("/inbox", verifyToken, viewInbox);
+router.get("/status/:userId", verifyToken, fetchUserOnlineStatus);
+router.post("/start/:receiverId", verifyToken, startOrGetChat);
+
+// Message & Voice Note Actions
+router.put("/message/:messageId/played", verifyToken, voiceNotePlayed);
+router.put("/message/:messageId/react", verifyToken, reactToMessage);
+router.put("/message/:messageId/edit", verifyToken, editChatMessage);
+router.put("/message/:messageId/pin", verifyToken, pinChatMessage);
+router.delete("/message/:messageId", verifyToken, removeChatMessage);
+
+// Send Voice Note, General Media/Text, History, Read & Search
+router.post("/:chatId/voice", verifyToken, uploadChatMedia.single("voice"), sendVoiceNote);
+// router.post("/:chatId/send", verifyToken, uploadChatMedia.single("media"), sendChatMessage);
+
+router.post(
+    "/:chatId/send",
+    verifyToken,
+    uploadChatMedia.fields([
+        { name: "media", maxCount: 1 },
+        { name: "voice", maxCount: 1 }
+    ]),
+    sendChatMessage
+);
+router.get("/:chatId/messages", verifyToken, viewChatHistory);
+router.put("/:chatId/read", verifyToken, markChatAsRead);
+router.get("/:chatId/search", verifyToken, searchMessagesInChat);
+
+module.exports = router;

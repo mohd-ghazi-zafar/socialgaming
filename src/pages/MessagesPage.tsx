@@ -24,6 +24,7 @@ import {
   Play,
   Pause,
   Radio,
+  MessageSquare,
 } from 'lucide-react'
 import {
   viewAllUsers,
@@ -35,6 +36,8 @@ import {
   acceptFollowRequest,
   rejectFollowRequest,
   sendFollowRequest,
+  viewFollowing,
+  viewFollowers,
   viewInbox,
   startOrGetChat,
   sendChatMessage,
@@ -443,8 +446,10 @@ export const MessagesPage: React.FC = () => {
         viewInbox(token).catch(() => ({ chats: [] })),
         viewAllUsers(token).catch(() => ({ users: [] })),
         viewPendingFollowRequests(token).catch(() => ({ requests: [] })),
+        viewFollowing(token).catch(() => ({ following: [] })),
+        viewFollowers(token).catch(() => ({ followers: [] })),
       ])
-        .then(([inboxRes, usersRes, requestsRes]) => {
+        .then(([inboxRes, usersRes, requestsRes, followingRes, followersRes]) => {
           const usersList: RealUser[] = usersRes?.users || []
           setAllDbUsers(usersList)
 
@@ -468,27 +473,64 @@ export const MessagesPage: React.FC = () => {
           })
           setPendingRequests(enrichedPendingRequests)
 
-          // In main inbox, show ONLY chats that are NOT pending requests from unaccepted users
+          // Collect all accepted connections (following + followers)
+          const friendsMap = new Map<number, any>()
+          ;(followingRes?.following || []).forEach((u: any) => {
+            if (u?.id) friendsMap.set(Number(u.id), u)
+          })
+          ;(followersRes?.followers || []).forEach((u: any) => {
+            if (u?.id) friendsMap.set(Number(u.id), u)
+          })
+
+          const existingThreadUserIds = new Set<number>()
+
+          // 1. Active chats from inbox
           const acceptedInboxThreads: ChatThread[] = inboxChats
             .filter((c: any) => !pendingSenderIds.has(Number(c.player_id)))
-            .map((c: any) => ({
-              id: `chat-${c.chat_id}`,
-              chatId: c.chat_id,
-              chatUid: c.chat_uid,
-              userId: c.player_id,
-              name: c.player_name || 'Player',
-              avatarInitial: c.player_name ? c.player_name.trim().charAt(0).toUpperCase() : 'U',
-              avatarImage: normalizeImageUrl(c.player_image),
-              avatarBg: 'bg-[#00c59e]',
-              lastMessage: c.last_message || 'Tap to start conversation',
-              timestamp: c.last_message_at
-                ? new Date(c.last_message_at).toLocaleTimeString([], {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })
-                : 'Now',
-              unreadCount: c.unread_count || 0,
-            }))
+            .map((c: any) => {
+              existingThreadUserIds.add(Number(c.player_id))
+              return {
+                id: `chat-${c.chat_id}`,
+                chatId: c.chat_id,
+                chatUid: c.chat_uid,
+                userId: c.player_id,
+                name: c.player_name || 'Player',
+                avatarInitial: c.player_name ? c.player_name.trim().charAt(0).toUpperCase() : 'U',
+                avatarImage: normalizeImageUrl(c.player_image),
+                avatarBg: 'bg-[#00c59e]',
+                lastMessage: c.last_message || 'Tap to start conversation',
+                timestamp: c.last_message_at
+                  ? new Date(c.last_message_at).toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })
+                  : 'Now',
+                unreadCount: c.unread_count || 0,
+              }
+            })
+
+          // 2. Include any accepted friends who do not yet have an inbox chat row
+          const myId = getStoredAuth()?.user?.id
+          friendsMap.forEach((friend, friendId) => {
+            if (
+              !existingThreadUserIds.has(friendId) &&
+              !pendingSenderIds.has(friendId) &&
+              (!myId || Number(myId) !== Number(friendId))
+            ) {
+              existingThreadUserIds.add(friendId)
+              acceptedInboxThreads.push({
+                id: `friend-${friendId}`,
+                userId: friendId,
+                name: friend.name || 'Friend',
+                avatarInitial: friend.name ? friend.name.trim().charAt(0).toUpperCase() : 'U',
+                avatarImage: normalizeImageUrl(friend.profile_image),
+                avatarBg: 'bg-[#00c59e]',
+                lastMessage: 'Connected - tap to chat',
+                timestamp: 'Connected',
+                unreadCount: 0,
+              })
+            }
+          })
 
           // Set only actual active accepted conversations in the main message hub
           setThreads(acceptedInboxThreads)
@@ -509,9 +551,11 @@ export const MessagesPage: React.FC = () => {
       if (!token) return
 
       try {
-        const [inboxRes, requestsRes] = await Promise.all([
+        const [inboxRes, requestsRes, followingRes, followersRes] = await Promise.all([
           viewInbox(token).catch(() => ({ chats: [] })),
           viewPendingFollowRequests(token).catch(() => ({ requests: [] })),
+          viewFollowing(token).catch(() => ({ following: [] })),
+          viewFollowers(token).catch(() => ({ followers: [] })),
         ])
 
         const pendingList: PendingRequest[] = requestsRes?.requests || []
@@ -532,26 +576,61 @@ export const MessagesPage: React.FC = () => {
         })
         setPendingRequests(enrichedPendingRequests)
 
+        const friendsMap = new Map<number, any>()
+        ;(followingRes?.following || []).forEach((u: any) => {
+          if (u?.id) friendsMap.set(Number(u.id), u)
+        })
+        ;(followersRes?.followers || []).forEach((u: any) => {
+          if (u?.id) friendsMap.set(Number(u.id), u)
+        })
+
+        const existingThreadUserIds = new Set<number>()
+
         const acceptedInboxThreads: ChatThread[] = inboxChats
           .filter((c: any) => !pendingSenderIds.has(Number(c.player_id)))
-          .map((c: any) => ({
-            id: `chat-${c.chat_id}`,
-            chatId: c.chat_id,
-            chatUid: c.chat_uid,
-            userId: c.player_id,
-            name: c.player_name || 'Player',
-            avatarInitial: c.player_name ? c.player_name.trim().charAt(0).toUpperCase() : 'U',
-            avatarImage: normalizeImageUrl(c.player_image),
-            avatarBg: 'bg-[#00c59e]',
-            lastMessage: c.last_message || 'Tap to start conversation',
-            timestamp: c.last_message_at
-              ? new Date(c.last_message_at).toLocaleTimeString([], {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })
-              : 'Now',
-            unreadCount: c.unread_count || 0,
-          }))
+          .map((c: any) => {
+            existingThreadUserIds.add(Number(c.player_id))
+            return {
+              id: `chat-${c.chat_id}`,
+              chatId: c.chat_id,
+              chatUid: c.chat_uid,
+              userId: c.player_id,
+              name: c.player_name || 'Player',
+              avatarInitial: c.player_name ? c.player_name.trim().charAt(0).toUpperCase() : 'U',
+              avatarImage: normalizeImageUrl(c.player_image),
+              avatarBg: 'bg-[#00c59e]',
+              lastMessage: c.last_message || 'Tap to start conversation',
+              timestamp: c.last_message_at
+                ? new Date(c.last_message_at).toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })
+                : 'Now',
+              unreadCount: c.unread_count || 0,
+            }
+          })
+
+        const myId = getStoredAuth()?.user?.id
+        friendsMap.forEach((friend, friendId) => {
+          if (
+            !existingThreadUserIds.has(friendId) &&
+            !pendingSenderIds.has(friendId) &&
+            (!myId || Number(myId) !== Number(friendId))
+          ) {
+            existingThreadUserIds.add(friendId)
+            acceptedInboxThreads.push({
+              id: `friend-${friendId}`,
+              userId: friendId,
+              name: friend.name || 'Friend',
+              avatarInitial: friend.name ? friend.name.trim().charAt(0).toUpperCase() : 'U',
+              avatarImage: normalizeImageUrl(friend.profile_image),
+              avatarBg: 'bg-[#00c59e]',
+              lastMessage: 'Connected - tap to chat',
+              timestamp: 'Connected',
+              unreadCount: 0,
+            })
+          }
+        })
 
         setThreads(acceptedInboxThreads)
       } catch {
@@ -610,6 +689,9 @@ export const MessagesPage: React.FC = () => {
 
       // Move conversation immediately into main active inbox threads
       if (senderId) {
+        startOrGetChat(senderId, token).catch(() => null)
+        sendFollowRequest(senderId, token).catch(() => {})
+
         const targetUser = allDbUsers.find((u) => Number(u.id) === Number(senderId))
         const res = await startOrGetChat(senderId, token).catch(() => null)
         const chatId = res?.chat?.id
@@ -694,17 +776,7 @@ export const MessagesPage: React.FC = () => {
     const selectedUsers = friendsList.filter((u) => selectedFriendIds.includes(u.id))
     if (selectedUsers.length === 1) {
       const u = selectedUsers[0]
-      const targetThread: ChatThread = {
-        id: `chat-${u.user_uid}`,
-        userId: u.id,
-        name: u.name,
-        avatarInitial: u.name ? u.name.charAt(0).toUpperCase() : 'U',
-        avatarImage: normalizeImageUrl(u.profile_image),
-        lastMessage: 'Chat started',
-        timestamp: 'Just now',
-      }
-      setActiveChat(targetThread)
-      setMessages([])
+      handleStartChatWithFriend(u)
     } else {
       const groupName = selectedUsers.map((u) => u.name).join(', ')
       const newGroupThread: ChatThread = {
@@ -811,6 +883,20 @@ export const MessagesPage: React.FC = () => {
       showToast(err.message || 'Could not connect chat room')
     }
   }
+
+  // Auto-open chat if navigated from external buttons (e.g. FindFriendSection or SearchPage)
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem('open_chat_user')
+      if (raw) {
+        const user = JSON.parse(raw)
+        sessionStorage.removeItem('open_chat_user')
+        if (user && user.id) {
+          handleStartChatWithFriend(user)
+        }
+      }
+    } catch {}
+  }, [allDbUsers])
 
   // Open Chat from Message Hub Thread
   const handleOpenThread = async (thread: ChatThread) => {
@@ -1060,15 +1146,34 @@ export const MessagesPage: React.FC = () => {
       }
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const mediaRecorder = new MediaRecorder(stream)
+
+      // Determine optimal browser-supported audio mimeType
+      let chosenMimeType = ''
+      if (typeof MediaRecorder !== 'undefined') {
+        if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+          chosenMimeType = 'audio/webm;codecs=opus'
+        } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+          chosenMimeType = 'audio/mp4'
+        } else if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) {
+          chosenMimeType = 'audio/ogg;codecs=opus'
+        } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+          chosenMimeType = 'audio/webm'
+        }
+      }
+
+      const mediaRecorder = chosenMimeType
+        ? new MediaRecorder(stream, { mimeType: chosenMimeType })
+        : new MediaRecorder(stream)
+
       mediaRecorderRef.current = mediaRecorder
       audioChunksRef.current = []
 
       mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) audioChunksRef.current.push(e.data)
+        if (e.data && e.data.size > 0) audioChunksRef.current.push(e.data)
       }
 
-      mediaRecorder.start()
+      // Start with 100ms timeslice to ensure continuous chunk buffering
+      mediaRecorder.start(100)
       setIsRecordingVoice(true)
       setRecordingDuration(0)
 
@@ -1100,10 +1205,23 @@ export const MessagesPage: React.FC = () => {
       emitStopRecordingVoice(activeChat.chatId, currentUserId)
     }
 
+    // Flush any pending data before stopping
+    if (recorder.state === 'recording') {
+      try {
+        recorder.requestData()
+      } catch {}
+    }
+
     recorder.onstop = async () => {
-      const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
+      const actualMime = recorder.mimeType || 'audio/webm'
+      const audioBlob = new Blob(audioChunksRef.current, { type: actualMime })
       recorder.stream.getTracks().forEach((track) => track.stop())
       setIsRecordingVoice(false)
+
+      if (audioBlob.size === 0) {
+        showToast('Voice recording was empty. Please try again.')
+        return
+      }
 
       let token = getAuthToken()
       if (!token) token = await ensureActiveAuthToken()
@@ -1116,8 +1234,12 @@ export const MessagesPage: React.FC = () => {
       }
 
       if (chatId && token) {
+        const ext = actualMime.includes('mp4') ? 'm4a' : actualMime.includes('ogg') ? 'ogg' : 'webm'
+        const voiceFileName = `voice_${Date.now()}.${ext}`
+
         const fd = new FormData()
-        fd.append('voice', audioBlob, `voice_${Date.now()}.webm`)
+        // Provide under 'voice' matching backend 06_files uploadChatMedia.single("voice") and uploadChatMedia.fields([{ name: "voice" }])
+        fd.append('voice', audioBlob, voiceFileName)
         fd.append('message_type', 'voice')
         fd.append('media_duration', String(recordingDuration || 1))
         fd.append('waveform', JSON.stringify([25, 50, 85, 60, 35, 95, 75, 45, 65, 35, 90, 45]))
@@ -1165,33 +1287,61 @@ export const MessagesPage: React.FC = () => {
   }
 
   // Interactive Voice Note Playback & Blue Mic Receipt (from 05_files)
-  const handleTogglePlayAudio = (message: BackendMessage) => {
+  const handleTogglePlayAudio = async (message: BackendMessage) => {
     if (!message.media_url) {
       showToast('Audio file not found')
       return
     }
 
+    // Toggle pause if already playing this message
     if (activeAudioPlayingId === message.id) {
-      activeAudioElementRef.current?.pause()
+      if (activeAudioElementRef.current) {
+        activeAudioElementRef.current.pause()
+        activeAudioElementRef.current = null
+      }
       setActiveAudioPlayingId(null)
       return
     }
 
+    // Stop any existing playing audio
     if (activeAudioElementRef.current) {
       activeAudioElementRef.current.pause()
+      activeAudioElementRef.current = null
     }
 
-    const audio = new Audio(normalizeImageUrl(message.media_url) || message.media_url)
-    activeAudioElementRef.current = audio
-    setActiveAudioPlayingId(message.id)
+    const rawUrl = message.media_url
+    const normalizedUrl = normalizeImageUrl(rawUrl) || rawUrl
 
-    audio.onended = () => {
+    try {
+      const audio = new Audio()
+      audio.preload = 'auto'
+      audio.src = normalizedUrl
+      activeAudioElementRef.current = audio
+      setActiveAudioPlayingId(message.id)
+
+      audio.onended = () => {
+        setActiveAudioPlayingId(null)
+        activeAudioElementRef.current = null
+      }
+
+      audio.onerror = (e) => {
+        console.warn('Voice note playback error for URL:', normalizedUrl, e)
+        setActiveAudioPlayingId(null)
+        activeAudioElementRef.current = null
+        showToast('Could not play audio file (unsupported format or expired link)')
+      }
+
+      await audio.play().catch((playErr) => {
+        console.warn('Audio play() rejected:', playErr)
+        setActiveAudioPlayingId(null)
+        activeAudioElementRef.current = null
+        showToast('Tap again to play audio')
+      })
+    } catch (err) {
       setActiveAudioPlayingId(null)
+      activeAudioElementRef.current = null
+      showToast('Unable to play voice note')
     }
-    audio.onerror = () => {
-      setActiveAudioPlayingId(null)
-    }
-    audio.play().catch(() => setActiveAudioPlayingId(null))
 
     // Mark as played if recipient (from 05_files endpoint)
     const currentUserId = getStoredAuth()?.user?.id
@@ -1535,36 +1685,62 @@ export const MessagesPage: React.FC = () => {
       {/* SCREEN 2: CHOOSE FRIENDS PICKER MODAL (Image 2)               */}
       {/* ============================================================ */}
       {isChooseFriendsOpen && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-white max-w-[471px] mx-auto animate-slide-up">
+        <div className="fixed inset-0 z-[70] flex flex-col bg-white max-w-[471px] mx-auto animate-slide-up shadow-2xl">
           {/* Header */}
-          <div className="px-4 py-3 flex items-center justify-between border-b border-slate-100 bg-white">
+          <div className="px-4 py-3 flex items-center justify-between border-b border-slate-100 bg-white shrink-0">
             <button
               type="button"
-              onClick={() => setIsChooseFriendsOpen(false)}
+              onClick={() => {
+                setIsChooseFriendsOpen(false)
+                setSelectedFriendIds([])
+              }}
               className="p-1 -ml-1 text-slate-800 hover:text-black cursor-pointer"
             >
               <X className="w-5 h-5 stroke-[2.5]" />
             </button>
             <h2 className="text-base font-bold text-slate-900">Choose friends</h2>
-            <div className="w-5" />
+
+            {/* Top Right Header Action Button */}
+            <button
+              type="button"
+              disabled={selectedFriendIds.length === 0}
+              onClick={handleConfirmChooseFriends}
+              className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1 ${
+                selectedFriendIds.length > 0
+                  ? 'bg-[#00dfb6] text-[#06201a] active:scale-95 shadow-xs cursor-pointer hover:bg-[#00c59e]'
+                  : 'text-slate-300 cursor-not-allowed'
+              }`}
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              <span>Chat {selectedFriendIds.length > 0 ? `(${selectedFriendIds.length})` : ''}</span>
+            </button>
           </div>
 
           {/* Search Bar matching Image 2 */}
-          <div className="px-4 py-2.5">
+          <div className="px-4 py-2.5 shrink-0">
             <div className="flex items-center gap-2 bg-[#f2f3f5] rounded-full px-3.5 py-2">
               <Search className="w-4 h-4 text-slate-400 shrink-0" />
               <input
                 type="text"
                 value={chooseSearchQuery}
                 onChange={(e) => setChooseSearchQuery(e.target.value)}
-                placeholder="Search"
+                placeholder="Search friend by name or ID..."
                 className="bg-transparent text-xs text-slate-800 placeholder-slate-400 focus:outline-none flex-1 font-normal"
               />
+              {chooseSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setChooseSearchQuery('')}
+                  className="text-slate-400 hover:text-slate-600 p-0.5"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
           </div>
 
-          {/* Grouped Friends List with Checkboxes */}
-          <div className="flex-1 overflow-y-auto pb-24">
+          {/* Grouped Friends List with Checkboxes and Direct Message Button */}
+          <div className="flex-1 overflow-y-auto px-1 pb-4">
             {sortedChooseGroupKeys.map((letter) => {
               const group = groupedChooseFriends[letter] || []
               if (group.length === 0) return null
@@ -1630,15 +1806,33 @@ export const MessagesPage: React.FC = () => {
                             </div>
                           </div>
 
-                          {/* Right: Circular Selection Radio */}
-                          <div
-                            className={`w-5 h-5 rounded-full flex items-center justify-center transition-colors shrink-0 ${
-                              isSelected
-                                ? 'bg-[#00dfb6] border-2 border-[#00dfb6]'
-                                : 'border-2 border-slate-300'
-                            }`}
-                          >
-                            {isSelected && <Check className="w-3.5 h-3.5 text-white stroke-[3]" />}
+                          {/* Right: Direct Message Button + Circular Selection Radio */}
+                          <div className="flex items-center gap-2.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleStartChatWithFriend(user)
+                                setIsChooseFriendsOpen(false)
+                                setSelectedFriendIds([])
+                              }}
+                              className="px-2.5 py-1 rounded-full bg-[#00dfb6] hover:bg-[#00c59e] active:scale-95 text-[#06201a] font-black text-xs flex items-center gap-1 transition-all shadow-xs cursor-pointer"
+                              title={`Direct message ${user.name}`}
+                            >
+                              <MessageSquare className="w-3.5 h-3.5 stroke-[2.5]" />
+                              <span>Message</span>
+                            </button>
+
+                            {/* Circular Selection Radio */}
+                            <div
+                              className={`w-5 h-5 rounded-full flex items-center justify-center transition-colors shrink-0 ${
+                                isSelected
+                                  ? 'bg-[#00dfb6] border-2 border-[#00dfb6]'
+                                  : 'border-2 border-slate-300'
+                              }`}
+                            >
+                              {isSelected && <Check className="w-3.5 h-3.5 text-white stroke-[3]" />}
+                            </div>
                           </div>
                         </div>
                       )
@@ -1649,19 +1843,26 @@ export const MessagesPage: React.FC = () => {
             })}
           </div>
 
-          {/* Bottom Sticky Footer Action Button matching Image 2 */}
-          <div className="fixed bottom-4 left-0 right-0 max-w-[471px] mx-auto px-4 z-10 pointer-events-auto">
+          {/* Bottom Sticky Footer Action Button */}
+          <div className="shrink-0 bg-white border-t border-slate-100 p-3 px-4 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] z-20">
             <button
               type="button"
               disabled={selectedFriendIds.length === 0}
               onClick={handleConfirmChooseFriends}
-              className={`w-full py-3 rounded-full font-bold text-sm transition-all duration-150 ${
+              className={`w-full py-3 rounded-full font-bold text-sm flex items-center justify-center gap-2 transition-all duration-150 ${
                 selectedFriendIds.length > 0
-                  ? 'bg-[#00dfb6] text-[#06201a] active:scale-95 shadow-md cursor-pointer'
+                  ? 'bg-[#00dfb6] text-[#06201a] hover:bg-[#00c59e] active:scale-95 shadow-md cursor-pointer'
                   : 'bg-[#f2f4f7] text-[#9da2ad] cursor-not-allowed'
               }`}
             >
-              Done ({selectedFriendIds.length})
+              <MessageSquare className="w-4 h-4" />
+              <span>
+                {selectedFriendIds.length === 0
+                  ? 'Select a friend or tap Message'
+                  : selectedFriendIds.length === 1
+                  ? `Message ${friendsList.find((u) => u.id === selectedFriendIds[0])?.name || 'Selected Friend'}`
+                  : `Start Group Chat (${selectedFriendIds.length})`}
+              </span>
             </button>
           </div>
         </div>
@@ -1880,8 +2081,8 @@ export const MessagesPage: React.FC = () => {
                       </span>
                     )}
 
-                    {/* 1. Voice Note Bubble (from 05_files) */}
-                    {m.message_type === 'voice' || (m.media_url && (m.media_url.includes('.webm') || m.media_url.includes('audio') || m.media_url.includes('.wav') || m.media_url.includes('.mp3'))) ? (
+                    {/* 1. Voice Note Bubble (from 06_files) */}
+                    {m.message_type === 'voice' || (m.media_url && (m.media_url.includes('.webm') || m.media_url.includes('.m4a') || m.media_url.includes('.ogg') || m.media_url.includes('audio') || m.media_url.includes('.wav') || m.media_url.includes('.mp3') || m.media_url.includes('voice_'))) ? (
                       <div className="flex items-center gap-2.5 py-0.5 min-w-[180px]">
                         <button
                           type="button"

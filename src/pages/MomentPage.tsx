@@ -10,6 +10,8 @@ import {
   Trash2,
   Smile,
   X,
+  Plus,
+  Loader2,
 } from 'lucide-react'
 import {
   viewAllMoments,
@@ -52,11 +54,12 @@ export const MomentPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true)
   const [followedUsers, setFollowedUsers] = useState<Record<number, boolean>>({})
 
-  // Post Moment Form States
+  // Post Moment Form States (supports multiple photo uploads)
   const [isPosting, setIsPosting] = useState(false)
   const [caption, setCaption] = useState('')
-  const [selectedFile, setSelectedFile] = useState<File | null>(null)
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([])
+  const [previewUrls, setPreviewUrls] = useState<string[]>([])
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [toastMsg, setToastMsg] = useState('')
 
@@ -105,46 +108,87 @@ export const MomentPage: React.FC = () => {
     loadMoments()
   }, [activeSubTab])
 
-  // Handle Image Selection
+  // Handle Multi-Image Selection (up to 9 photos)
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      setSelectedFile(file)
-      setPreviewUrl(URL.createObjectURL(file))
+    const newFiles = Array.from(e.target.files || [])
+    if (newFiles.length === 0) return
+
+    // Allow adding up to 9 photos total
+    const combinedFiles = [...selectedFiles, ...newFiles].slice(0, 9)
+    setSelectedFiles(combinedFiles)
+
+    // Generate fresh preview URLs
+    previewUrls.forEach((url) => URL.revokeObjectURL(url))
+    const newPreviews = combinedFiles.map((file) => URL.createObjectURL(file))
+    setPreviewUrls(newPreviews)
+
+    // Reset input value so same files can be re-selected if removed
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
     }
   }
 
-  // Submit Post to Backend
+  // Remove single photo from selection
+  const handleRemovePhoto = (indexToRemove: number) => {
+    if (previewUrls[indexToRemove]) {
+      URL.revokeObjectURL(previewUrls[indexToRemove])
+    }
+    const updatedFiles = selectedFiles.filter((_, idx) => idx !== indexToRemove)
+    const updatedPreviews = previewUrls.filter((_, idx) => idx !== indexToRemove)
+    setSelectedFiles(updatedFiles)
+    setPreviewUrls(updatedPreviews)
+  }
+
+  // Clear all selected photos
+  const handleClearPhotos = () => {
+    previewUrls.forEach((url) => URL.revokeObjectURL(url))
+    setSelectedFiles([])
+    setPreviewUrls([])
+  }
+
+  // Submit Post(s) to Backend
   const handleCreatePost = async (e: React.FormEvent) => {
     e.preventDefault()
     const token = getAuthToken()
     if (!token) return showToast('Please log in first')
 
-    if (!selectedFile) {
-      return showToast('Please select a photo for your moment')
+    if (selectedFiles.length === 0) {
+      return showToast('Please select at least one photo for your moment')
     }
 
     setIsSubmitting(true)
+    const total = selectedFiles.length
+    setUploadProgress({ current: 0, total })
+
     try {
-      const formData = new FormData()
-      formData.append('image', selectedFile)
-      if (caption.trim()) {
-        formData.append('caption', caption.trim())
+      for (let i = 0; i < total; i++) {
+        setUploadProgress({ current: i + 1, total })
+        const file = selectedFiles[i]
+        const formData = new FormData()
+        formData.append('image', file)
+
+        if (caption.trim()) {
+          const postCaption = total > 1 ? `${caption.trim()} (${i + 1}/${total})` : caption.trim()
+          formData.append('caption', postCaption)
+        }
+
+        await postMoment(formData, token)
       }
 
-      const res = await postMoment(formData, token)
-      if (res?.moment) {
-        showToast('Moment posted successfully!')
-        setCaption('')
-        setSelectedFile(null)
-        setPreviewUrl(null)
-        setIsPosting(false)
-        loadMoments()
-      }
+      showToast(
+        total === 1
+          ? 'Moment posted successfully!'
+          : `All ${total} photos shared successfully!`
+      )
+      setCaption('')
+      handleClearPhotos()
+      setIsPosting(false)
+      loadMoments()
     } catch (err: any) {
-      showToast(err.message || 'Failed to post moment')
+      showToast(err.message || 'Failed to post moments')
     } finally {
       setIsSubmitting(false)
+      setUploadProgress(null)
     }
   }
 
@@ -292,37 +336,89 @@ export const MomentPage: React.FC = () => {
             className="w-full bg-[#051c17] border border-emerald-700/50 rounded-xl p-3 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-[#00dfb6] resize-none"
           />
 
-          {/* Photo Preview if Selected */}
-          {previewUrl && (
-            <div className="relative w-24 h-24 rounded-xl overflow-hidden border border-emerald-700/60 shadow-md">
-              <img src={previewUrl} alt="Preview" className="w-full h-full object-cover" />
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedFile(null)
-                  setPreviewUrl(null)
-                }}
-                className="absolute top-1 right-1 bg-black/70 text-white rounded-full p-0.5 hover:bg-black"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
+          {/* Multi-Photo Grid Preview if Selected */}
+          {previewUrls.length > 0 && (
+            <div className="space-y-2">
+              <div className="grid grid-cols-3 gap-2">
+                {previewUrls.map((url, idx) => (
+                  <div
+                    key={idx}
+                    className="relative aspect-square rounded-xl overflow-hidden border border-emerald-700/60 shadow-md group bg-black/40"
+                  >
+                    <img
+                      src={url}
+                      alt={`Preview ${idx + 1}`}
+                      className="w-full h-full object-cover"
+                    />
+
+                    {/* Photo index badge */}
+                    <span className="absolute bottom-1 left-1 bg-black/70 text-[#00dfb6] text-[10px] font-black px-1.5 py-0.5 rounded-md">
+                      {idx + 1}
+                    </span>
+
+                    {/* Delete photo button */}
+                    <button
+                      type="button"
+                      onClick={() => handleRemovePhoto(idx)}
+                      className="absolute top-1 right-1 bg-black/80 hover:bg-rose-600 text-white rounded-full p-1 transition-colors cursor-pointer shadow-sm"
+                      title="Remove photo"
+                    >
+                      <X className="w-3 h-3 stroke-[2.5]" />
+                    </button>
+                  </div>
+                ))}
+
+                {/* Add more photo card if < 9 */}
+                {selectedFiles.length < 9 && (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="aspect-square rounded-xl border border-dashed border-emerald-700/60 hover:border-[#00dfb6] bg-[#051c17]/60 hover:bg-[#092b23] flex flex-col items-center justify-center gap-1 text-slate-400 hover:text-[#00dfb6] transition-all cursor-pointer"
+                  >
+                    <Plus className="w-5 h-5" />
+                    <span className="text-[10px] font-bold">Add more</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Status info bar */}
+              <div className="flex items-center justify-between text-[11px] text-slate-400 px-0.5">
+                <span>
+                  {selectedFiles.length} of 9 photo{selectedFiles.length > 1 ? 's' : ''} selected
+                </span>
+                <button
+                  type="button"
+                  onClick={handleClearPhotos}
+                  className="text-rose-400 hover:text-rose-300 font-semibold cursor-pointer"
+                >
+                  Clear all
+                </button>
+              </div>
             </div>
           )}
 
           <div className="flex items-center justify-between pt-1">
             <button
               type="button"
+              disabled={selectedFiles.length >= 9}
               onClick={() => fileInputRef.current?.click()}
-              className="text-slate-300 hover:text-[#00dfb6] transition-colors flex items-center gap-1.5 text-xs font-semibold p-1"
+              className="text-slate-300 hover:text-[#00dfb6] disabled:opacity-40 transition-colors flex items-center gap-1.5 text-xs font-semibold p-1 cursor-pointer"
             >
               <ImageIcon className="w-4 h-4 text-[#00dfb6]" />
-              <span>{selectedFile ? 'Change photo' : 'Add photo'}</span>
+              <span>
+                {selectedFiles.length === 0
+                  ? 'Add photos (up to 9)'
+                  : selectedFiles.length < 9
+                  ? `+ Add more (${selectedFiles.length}/9)`
+                  : 'Max 9 photos'}
+              </span>
             </button>
             <input
               type="file"
               ref={fileInputRef}
               onChange={handleFileChange}
               accept="image/*"
+              multiple
               className="hidden"
             />
 
@@ -331,24 +427,40 @@ export const MomentPage: React.FC = () => {
                 type="button"
                 onClick={() => {
                   setIsPosting(false)
-                  setSelectedFile(null)
-                  setPreviewUrl(null)
+                  handleClearPhotos()
                 }}
-                className="text-xs text-slate-400 hover:text-white px-3 py-1.5"
+                className="text-xs text-slate-400 hover:text-white px-3 py-1.5 cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                disabled={isSubmitting || !selectedFile}
+                disabled={isSubmitting || selectedFiles.length === 0}
                 className={`px-4 py-1.5 font-bold text-xs rounded-xl shadow-md cursor-pointer flex items-center gap-1.5 transition-all ${
-                  selectedFile
+                  selectedFiles.length > 0 && !isSubmitting
                     ? 'bg-[#00dfb6] hover:bg-[#2dd4bf] text-[#06201a] active:scale-95'
                     : 'bg-slate-700 text-slate-400 cursor-not-allowed'
                 }`}
               >
-                <Send className="w-3 h-3" />
-                <span>{isSubmitting ? 'Posting...' : 'Share'}</span>
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>
+                      {uploadProgress
+                        ? `Posting ${uploadProgress.current}/${uploadProgress.total}...`
+                        : 'Posting...'}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-3 h-3" />
+                    <span>
+                      {selectedFiles.length > 1
+                        ? `Share (${selectedFiles.length})`
+                        : 'Share'}
+                    </span>
+                  </>
+                )}
               </button>
             </div>
           </div>

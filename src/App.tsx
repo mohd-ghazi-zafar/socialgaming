@@ -71,7 +71,12 @@ export default function App() {
     alert(`Joined Table: ${roomId}${pin ? ` (PIN: ${pin})` : ''}`)
   }
 
-  const handleStartMessageWithUser = (_user: DirectoryUser) => {
+  const handleStartMessageWithUser = (user: any) => {
+    if (user) {
+      try {
+        sessionStorage.setItem('open_chat_user', JSON.stringify(user))
+      } catch {}
+    }
     setCurrentTab('messages')
   }
 
@@ -143,6 +148,7 @@ export default function App() {
               onQuickMatchLaunch={handleQuickMatchLaunch}
               onOpenWallet={() => setCurrentTab('account')}
               onOpenSearch={() => setCurrentTab('search')}
+              onOpenMessages={handleStartMessageWithUser}
             />
           )}
 

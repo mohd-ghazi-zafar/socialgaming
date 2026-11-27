@@ -18,10 +18,23 @@ export const BANNER_BASE_URL = `${API_BASE_ROOT}/api/banner`
 
 export function normalizeImageUrl(url) {
   if (!url || typeof url !== 'string') return null
-  if (url.startsWith('http://72-61-235-208.sslip.io')) {
-    return url.replace('http://72-61-235-208.sslip.io', 'https://72-61-235-208.sslip.io')
+  let clean = url.trim()
+  // Any backend static uploads path should be routed securely via the production SSL domain
+  if (clean.includes('/uploads/')) {
+    const uploadPath = clean.substring(clean.indexOf('/uploads/'))
+    return `https://72-61-235-208.sslip.io${uploadPath}`
   }
-  return url
+  if (clean.startsWith('uploads/')) {
+    return `https://72-61-235-208.sslip.io/${clean}`
+  }
+  if (clean.startsWith('http://72-61-235-208.sslip.io')) {
+    clean = clean.replace('http://72-61-235-208.sslip.io', 'https://72-61-235-208.sslip.io')
+  } else if (clean.startsWith('http://72.61.235.208')) {
+    clean = clean.replace(/http:\/\/72\.61\.235\.208(:5000)?/, 'https://72-61-235-208.sslip.io')
+  } else if (clean.startsWith('http://')) {
+    clean = clean.replace('http://', 'https://')
+  }
+  return clean
 }
 
 export function parseJwt(token) {
