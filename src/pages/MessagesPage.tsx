@@ -1472,11 +1472,21 @@ export const MessagesPage: React.FC = () => {
             </span>
           </div>
 
-          {/* Loading */}
+          {/* Skeleton Friends Loading */}
           {isLoading && (
-            <div className="py-12 flex items-center justify-center gap-2 text-xs text-slate-400">
-              <div className="w-4 h-4 border-2 border-[#00dfb6] border-t-transparent rounded-full animate-spin" />
-              <span>Loading friends...</span>
+            <div className="px-4 py-3 space-y-4">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="flex items-center justify-between animate-pulse">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-slate-200 shrink-0" />
+                    <div className="space-y-1.5">
+                      <div className="h-3.5 bg-slate-200 rounded-md w-28" />
+                      <div className="h-2.5 bg-slate-100 rounded-md w-16" />
+                    </div>
+                  </div>
+                  <div className="h-7 w-16 bg-slate-100 rounded-full" />
+                </div>
+              ))}
             </div>
           )}
 
@@ -1607,11 +1617,24 @@ export const MessagesPage: React.FC = () => {
 
 
 
-          {/* Loading State */}
+          {/* Skeleton Chats List Loading */}
           {isLoading && (
-            <div className="w-full py-12 flex items-center justify-center gap-2 text-xs text-slate-400">
-              <div className="w-4 h-4 border-2 border-[#00dfb6] border-t-transparent rounded-full animate-spin" />
-              <span>Loading chats...</span>
+            <div className="flex-1 divide-y divide-slate-50 mt-1 px-4 py-2 space-y-3">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="flex items-center gap-3 py-2 animate-pulse">
+                  <div className="w-12 h-12 rounded-full bg-slate-200 shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="h-3.5 bg-slate-200 rounded-md w-28" />
+                      <div className="h-2.5 bg-slate-200 rounded-md w-12" />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="h-3 bg-slate-100 rounded-md w-40" />
+                      <div className="h-4 bg-slate-100 rounded-full w-8" />
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
 
@@ -2479,10 +2502,24 @@ export const MessagesPage: React.FC = () => {
 
           {/* Requests Content List */}
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            {/* Skeleton Requests Loading */}
             {requestsLoading && (
-              <div className="py-20 flex flex-col items-center justify-center gap-2 text-xs text-slate-400">
-                <div className="w-5 h-5 border-2 border-[#00dfb6] border-t-transparent rounded-full animate-spin" />
-                <span>Checking for incoming requests...</span>
+              <div className="space-y-3">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="flex items-center justify-between p-3 rounded-2xl border border-slate-100 bg-slate-50/50 animate-pulse">
+                    <div className="flex items-center gap-3">
+                      <div className="w-11 h-11 rounded-full bg-slate-200 shrink-0" />
+                      <div className="space-y-1.5">
+                        <div className="h-3.5 bg-slate-200 rounded-md w-24" />
+                        <div className="h-2.5 bg-slate-100 rounded-md w-16" />
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="h-8 w-16 bg-slate-200 rounded-full" />
+                      <div className="h-8 w-8 bg-slate-200 rounded-full" />
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
 

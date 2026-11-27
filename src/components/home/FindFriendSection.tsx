@@ -381,11 +381,27 @@ export const FindFriendSection: React.FC<FindFriendSectionProps> = ({ onJoinRoom
         </div>
       )}
 
-      {/* Loading State */}
+      {/* Skeleton Loading State (TopTop Dark Theme) */}
       {isLoading && (
-        <div className="w-full py-8 flex items-center justify-center gap-2 text-xs text-[#00dfb6]">
-          <div className="w-4 h-4 border-2 border-[#00dfb6] border-t-transparent rounded-full animate-spin" />
-          <span>Loading players...</span>
+        <div className="space-y-2.5 w-full">
+          {[1, 2, 3, 4].map((i) => (
+            <div
+              key={i}
+              className="w-full bg-[#0e211e]/80 border border-emerald-900/30 rounded-2xl p-2.5 flex items-center justify-between animate-pulse"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-11 h-11 rounded-full bg-emerald-950/70 border border-emerald-850/40 shrink-0" />
+                <div className="space-y-1.5 min-w-0">
+                  <div className="h-3.5 bg-emerald-900/50 rounded-md w-28" />
+                  <div className="flex items-center gap-1.5">
+                    <div className="h-3 bg-emerald-900/40 rounded-full w-12" />
+                    <div className="h-3 bg-emerald-900/30 rounded-full w-8" />
+                  </div>
+                </div>
+              </div>
+              <div className="h-7 w-20 bg-emerald-900/50 rounded-full shrink-0" />
+            </div>
+          ))}
         </div>
       )}
 

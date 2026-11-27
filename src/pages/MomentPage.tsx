@@ -467,11 +467,35 @@ export const MomentPage: React.FC = () => {
         </form>
       )}
 
-      {/* Loading State */}
+      {/* Skeleton Moments Feed Loading */}
       {isLoading && (
-        <div className="w-full py-16 flex items-center justify-center gap-2 text-xs text-[#00dfb6]">
-          <div className="w-4 h-4 border-2 border-[#00dfb6] border-t-transparent rounded-full animate-spin" />
-          <span>Loading moments from server...</span>
+        <div className="space-y-3 p-3">
+          {[1, 2].map((i) => (
+            <div
+              key={i}
+              className="bg-[#0c1f1b]/90 border border-emerald-900/30 rounded-2xl p-3.5 shadow-sm space-y-3 animate-pulse"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-full bg-emerald-950/70 border border-emerald-800/40 shrink-0" />
+                  <div className="space-y-1.5">
+                    <div className="h-3.5 bg-emerald-900/50 rounded-md w-28" />
+                    <div className="h-2.5 bg-emerald-900/30 rounded-md w-16" />
+                  </div>
+                </div>
+                <div className="h-3 w-8 bg-emerald-900/30 rounded-md" />
+              </div>
+              <div className="space-y-1.5">
+                <div className="h-3 bg-emerald-900/40 rounded-md w-3/4" />
+                <div className="h-3 bg-emerald-900/30 rounded-md w-1/2" />
+              </div>
+              <div className="w-full h-48 bg-emerald-950/60 border border-emerald-800/30 rounded-xl" />
+              <div className="flex items-center justify-between pt-1">
+                <div className="h-6 w-16 bg-emerald-900/40 rounded-full" />
+                <div className="h-6 w-14 bg-emerald-900/40 rounded-full" />
+              </div>
+            </div>
+          ))}
         </div>
       )}
 

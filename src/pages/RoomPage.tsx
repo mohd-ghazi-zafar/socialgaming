@@ -199,11 +199,31 @@ export const RoomPage: React.FC<RoomPageProps> = ({ onJoinRoom, onOpenSearch }) 
         })}
       </div>
 
-      {/* Loading State */}
+      {/* Skeleton Room Cards Loading */}
       {isLoading && (
-        <div className="w-full py-8 flex items-center justify-center gap-2 text-xs text-emerald-400">
-          <div className="w-3.5 h-3.5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
-          <span>Loading rooms from server...</span>
+        <div className="space-y-2.5 px-3 pt-2">
+          {[1, 2, 3, 4].map((i) => (
+            <div
+              key={i}
+              className="bg-slate-900/60 border border-emerald-900/30 rounded-2xl p-3 flex items-center justify-between animate-pulse"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-full bg-emerald-950/70 border border-emerald-800/30 shrink-0" />
+                <div className="space-y-2">
+                  <div className="h-3.5 bg-emerald-900/50 rounded-md w-32" />
+                  <div className="flex items-center gap-2">
+                    <div className="h-3 bg-emerald-900/40 rounded-full w-14" />
+                    <div className="h-3 bg-emerald-900/30 rounded-full w-16" />
+                  </div>
+                </div>
+              </div>
+              <div className="flex -space-x-1.5 shrink-0">
+                <div className="w-6 h-6 rounded-full bg-emerald-900/40 border border-slate-900" />
+                <div className="w-6 h-6 rounded-full bg-emerald-900/50 border border-slate-900" />
+                <div className="w-6 h-6 rounded-full bg-emerald-900/60 border border-slate-900" />
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
