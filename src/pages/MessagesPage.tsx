@@ -1082,7 +1082,7 @@ export const MessagesPage: React.FC = () => {
         setMessages((prev) =>
           prev.map((m) =>
             m.id === messageId
-              ? { ...m, content: 'This message was deleted', is_deleted_for_everyone: true }
+              ? { ...m, content: 'This message was deleted', media_url: null, is_deleted_for_everyone: true }
               : m
           )
         )
@@ -1092,8 +1092,9 @@ export const MessagesPage: React.FC = () => {
         showToast('Message deleted for you')
       }
       setActiveMessageActionId(null)
-    } catch {
-      showToast('Could not delete message')
+    } catch (err: any) {
+      console.warn('Failed to delete message:', err)
+      showToast(err?.message || 'Could not delete message')
     }
   }
 
@@ -2158,8 +2159,10 @@ export const MessagesPage: React.FC = () => {
                       </span>
                     )}
 
-                    {/* 1. Voice Note Bubble (from 06_files) */}
-                    {m.message_type === 'voice' || (m.media_url && (m.media_url.includes('.webm') || m.media_url.includes('.m4a') || m.media_url.includes('.ogg') || m.media_url.includes('audio') || m.media_url.includes('.wav') || m.media_url.includes('.mp3') || m.media_url.includes('voice_'))) ? (
+                    {/* 0. Deleted Message State */}
+                    {m.is_deleted_for_everyone || m.content === 'This message was deleted' ? (
+                      <p className="italic text-slate-400 text-xs py-0.5">This message was deleted</p>
+                    ) : m.message_type === 'voice' || (m.media_url && (m.media_url.includes('.webm') || m.media_url.includes('.m4a') || m.media_url.includes('.ogg') || m.media_url.includes('audio') || m.media_url.includes('.wav') || m.media_url.includes('.mp3') || m.media_url.includes('voice_'))) ? (
                       <div className="flex items-center gap-2.5 py-0.5 min-w-[180px]">
                         <button
                           type="button"

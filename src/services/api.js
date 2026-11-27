@@ -782,7 +782,21 @@ export async function editChatMessage(messageId, content, token) {
  * Delete a message ("for me" or "for everyone")
  * DELETE /api/chatroute/message/:messageId?forEveryone=true
  */
-export async function removeChatMessage(messageId, token, forEveryone = true) {
+export async function removeChatMessage(messageId, arg2, arg3) {
+  // Support both (messageId, token, forEveryone = true) and (messageId, forEveryone, token)
+  let token = null
+  let forEveryone = true
+
+  if (typeof arg2 === 'boolean') {
+    forEveryone = arg2
+    token = arg3
+  } else {
+    token = arg2
+    if (typeof arg3 === 'boolean') {
+      forEveryone = arg3
+    }
+  }
+
   const res = await fetch(`${CHAT_BASE_URL}/message/${messageId}?forEveryone=${Boolean(forEveryone)}`, {
     method: 'DELETE',
     headers: { ...authHeader(token) },
