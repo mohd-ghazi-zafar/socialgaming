@@ -18,6 +18,8 @@ import {
   Bell,
   User,
   UserCheck,
+  UserMinus,
+  Ban,
   Pin,
   Trash2,
   SmilePlus,
@@ -36,6 +38,8 @@ import {
   acceptFollowRequest,
   rejectFollowRequest,
   sendFollowRequest,
+  unfollowUser,
+  blockUser,
   viewFollowing,
   viewFollowers,
   viewInbox,
@@ -227,6 +231,7 @@ export const MessagesPage: React.FC = () => {
   // Modal States
   const [isChooseFriendsOpen, setIsChooseFriendsOpen] = useState(false)
   const [selectedFriendIds, setSelectedFriendIds] = useState<number[]>([])
+  const [isChatMenuOpen, setIsChatMenuOpen] = useState(false)
 
   // Follow & Chat Requests
   const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([])
@@ -236,6 +241,39 @@ export const MessagesPage: React.FC = () => {
   const showToast = (msg: string) => {
     setToastMsg(msg)
     setTimeout(() => setToastMsg(''), 2500)
+  }
+
+  // Unfriend / Unfollow handler from active chat
+  const handleUnfriendFromChat = async () => {
+    if (!activeChat?.userId) return
+    const token = getAuthToken()
+    if (!token) return
+
+    try {
+      await unfollowUser(activeChat.userId, token)
+      showToast(`Removed ${activeChat.name} from friends`)
+      setFriendsList((prev) => prev.filter((f) => f.id !== activeChat.userId))
+      setIsChatMenuOpen(false)
+    } catch (err: any) {
+      showToast(err.message || 'Failed to remove friend')
+    }
+  }
+
+  // Block handler from active chat
+  const handleBlockFromChat = async () => {
+    if (!activeChat?.userId) return
+    const token = getAuthToken()
+    if (!token) return
+
+    try {
+      await blockUser(activeChat.userId, token)
+      showToast(`Blocked ${activeChat.name}`)
+      setFriendsList((prev) => prev.filter((f) => f.id !== activeChat.userId))
+      setActiveChat(null)
+      setIsChatMenuOpen(false)
+    } catch (err: any) {
+      showToast(err.message || 'Failed to block user')
+    }
   }
 
   // Socket.IO Global Registration & Real-time Inbox Updates
@@ -1948,16 +1986,55 @@ export const MessagesPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Right: Only options menu (NO calling, NO video) */}
-            <div className="flex items-center gap-2 text-slate-400">
+            {/* Right: Options menu (Unfriend, Block, Close) */}
+            <div className="relative flex items-center gap-2 text-slate-400">
               <button
                 type="button"
-                onClick={() => showToast('Friendship details & options')}
+                onClick={() => setIsChatMenuOpen((prev) => !prev)}
                 className="hover:text-slate-700 p-1.5 rounded-full hover:bg-slate-50 transition-colors cursor-pointer"
                 title="Options"
               >
                 <MoreVertical className="w-5 h-5 stroke-[2]" />
               </button>
+
+              {isChatMenuOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setIsChatMenuOpen(false)}
+                  />
+                  <div className="absolute right-0 top-10 z-50 w-48 bg-white rounded-2xl shadow-xl border border-slate-100 py-1.5 animate-scale-in text-xs font-semibold text-slate-700">
+                    <button
+                      type="button"
+                      onClick={handleUnfriendFromChat}
+                      className="w-full px-3.5 py-2.5 flex items-center gap-2 hover:bg-rose-50 text-rose-600 transition-colors cursor-pointer text-left"
+                    >
+                      <UserMinus className="w-4 h-4 text-rose-500" />
+                      <span>Remove Friend</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleBlockFromChat}
+                      className="w-full px-3.5 py-2.5 flex items-center gap-2 hover:bg-rose-50 text-rose-600 transition-colors cursor-pointer text-left"
+                    >
+                      <Ban className="w-4 h-4 text-rose-500" />
+                      <span>Block Player</span>
+                    </button>
+                    <div className="my-1 border-t border-slate-100" />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveChat(null)
+                        setIsChatMenuOpen(false)
+                      }}
+                      className="w-full px-3.5 py-2 flex items-center gap-2 hover:bg-slate-50 text-slate-500 transition-colors cursor-pointer text-left"
+                    >
+                      <X className="w-4 h-4 text-slate-400" />
+                      <span>Close Chat</span>
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
