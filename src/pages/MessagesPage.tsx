@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import {
   Search,
   UserPlus,
@@ -65,6 +65,7 @@ import {
   emitRecordingVoice,
   emitStopRecordingVoice,
   isUserOnline,
+  subscribeToOnlineUsers,
 } from '../services/chatSocket'
 import { FlagEG, FlagSA } from '../components/common/SvgIcons'
 
@@ -232,6 +233,32 @@ export const MessagesPage: React.FC = () => {
   const [isChooseFriendsOpen, setIsChooseFriendsOpen] = useState(false)
   const [selectedFriendIds, setSelectedFriendIds] = useState<number[]>([])
   const [isChatMenuOpen, setIsChatMenuOpen] = useState(false)
+
+  // Real-time Online Users Presence for Top Horizontal Friends Row
+  const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    const unsubscribe = subscribeToOnlineUsers((onlineIds) => {
+      setOnlineUserIds(new Set(onlineIds))
+    })
+    return () => {
+      unsubscribe()
+    }
+  }, [])
+
+  // Friends row: online friends prioritized, sorted and displayed as interactive avatars
+  const displayedOnlineFriends = useMemo(() => {
+    if (!friendsList || friendsList.length === 0) return []
+    const online = friendsList.filter((f) => {
+      return (
+        onlineUserIds.has(String(f.id)) ||
+        isUserOnline(f.id) ||
+        (f.user_uid && onlineUserIds.has(String(f.user_uid)))
+      )
+    })
+    if (online.length > 0) return online
+    return friendsList
+  }, [friendsList, onlineUserIds])
 
   // Follow & Chat Requests
   const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([])
@@ -866,9 +893,8 @@ export const MessagesPage: React.FC = () => {
     isRequests: true,
   }
 
-  // Combined threads: Permanent System & Request channels always at top, followed by live inbox & players
+  // Combined threads: Requests channel followed by active chats (Platform Announcements removed)
   const combinedThreads: ChatThread[] = [
-    announcementsThread,
     requestsThread,
     ...threads,
   ]
@@ -1614,6 +1640,49 @@ export const MessagesPage: React.FC = () => {
               />
             </div>
           </div>
+
+          {/* Top Horizontal Row: Friends That Are Online (Avatars Only) */}
+          {!isLoading && displayedOnlineFriends.length > 0 && (
+            <div className="px-4 py-1.5 border-b border-slate-100/80 bg-white">
+              <div className="flex items-center gap-3.5 overflow-x-auto scrollbar-none py-1">
+                {displayedOnlineFriends.map((friend) => {
+                  const avatarUrl = normalizeImageUrl(friend.profile_image)
+                  const isOnline =
+                    onlineUserIds.has(String(friend.id)) ||
+                    isUserOnline(friend.id) ||
+                    (friend.user_uid && onlineUserIds.has(String(friend.user_uid)))
+
+                  return (
+                    <button
+                      key={friend.id || friend.user_uid}
+                      type="button"
+                      onClick={() => handleStartChatWithFriend(friend)}
+                      className="relative shrink-0 cursor-pointer focus:outline-none transition-transform active:scale-90"
+                      title={friend.name}
+                    >
+                      <div className="relative w-12 h-12 rounded-full p-0.5 bg-gradient-to-tr from-[#00dfb6] via-sky-400 to-indigo-500 shadow-xs hover:shadow-md transition-shadow">
+                        <div className="w-full h-full rounded-full bg-white p-0.5 overflow-hidden flex items-center justify-center">
+                          {avatarUrl ? (
+                            <img
+                              src={avatarUrl}
+                              alt={friend.name}
+                              className="w-full h-full rounded-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-full h-full rounded-full bg-slate-100 text-slate-700 font-bold flex items-center justify-center text-sm">
+                              {friend.name ? friend.name.charAt(0).toUpperCase() : 'U'}
+                            </div>
+                          )}
+                        </div>
+                        {/* Active Emerald Online Dot */}
+                        <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-500 border-2 border-white rounded-full shadow-xs" />
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
 
 
 
