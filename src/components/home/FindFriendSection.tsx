@@ -382,19 +382,21 @@ export const FindFriendSection: React.FC<FindFriendSectionProps> = ({ onJoinRoom
           </button>
         </div>
 
-        {/* Real-time Online Indicator */}
-        <div className="flex items-center gap-1.5 shrink-0 text-right">
-          <span
-            className={`w-2 h-2 rounded-full shrink-0 ${
-              (activeTab === 'friends' ? onlineFriendsCount : onlineUserIds.size) > 0
-                ? 'bg-[#00dfb6] animate-pulse shadow-[0_0_8px_#00dfb6]'
-                : 'bg-slate-500'
-            }`}
-          />
-          <span className="text-[12px] font-bold text-[#00dfb6] tracking-wide whitespace-nowrap">
-            {activeTab === 'friends' ? onlineFriendsCount : (onlineUserIds.size > 0 ? onlineUserIds.size : 1)} Online
-          </span>
-        </div>
+        {/* Real-time Online Indicator (Only displayed for actual Friends) */}
+        {activeTab === 'friends' && (
+          <div className="flex items-center gap-1.5 shrink-0 text-right">
+            <span
+              className={`w-2 h-2 rounded-full shrink-0 ${
+                onlineFriendsCount > 0
+                  ? 'bg-[#00dfb6] animate-pulse shadow-[0_0_8px_#00dfb6]'
+                  : 'bg-slate-500'
+              }`}
+            />
+            <span className="text-[12px] font-bold text-[#00dfb6] tracking-wide whitespace-nowrap">
+              {onlineFriendsCount} Online
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Search Input for All Players Tab */}
@@ -638,7 +640,6 @@ export const FindFriendSection: React.FC<FindFriendSectionProps> = ({ onJoinRoom
               const isMale = user.gender ? user.gender.toLowerCase() === 'male' : idx % 2 === 0
               const userAge = user.age || (isMale ? 23 : 20)
               const FlagComponent = idx % 3 === 0 ? FlagUS : idx % 3 === 1 ? FlagSA : FlagBH
-              const isOnline = onlineUserIds.has(String(user.id))
 
               return (
                 <div
@@ -659,12 +660,6 @@ export const FindFriendSection: React.FC<FindFriendSectionProps> = ({ onJoinRoom
                           }}
                         />
                       </div>
-                      <span
-                        className={`absolute bottom-0 right-0 w-3 h-3 rounded-full ring-2 ring-[#0e211e] ${
-                          isOnline ? 'bg-[#00dfb6]' : 'bg-slate-500'
-                        }`}
-                        title={isOnline ? 'Online now' : 'Offline'}
-                      />
                     </div>
 
                     <div className="flex flex-col gap-1 min-w-0 flex-1">
