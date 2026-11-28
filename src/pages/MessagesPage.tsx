@@ -811,11 +811,12 @@ export const MessagesPage: React.FC = () => {
           const existingThreadUserIds = new Set<number>()
 
           // 1. Group chats from backend 07_files
-          const groupThreads: ChatThread[] = (groupsRes?.groups || []).map((g: any) => {
-            if (g.id) joinGroupRoom(g.id)
+          const groupThreads: ChatThread[] = (groupsRes?.groups || []).map((g: any, idx: number) => {
+            const gid = Number(g.id || g.group_id)
+            if (gid) joinGroupRoom(gid)
             return {
-              id: `group-${g.id}`,
-              groupId: g.id,
+              id: `group-${gid || g.group_uid || idx}`,
+              groupId: gid,
               groupUid: g.group_uid,
               name: g.name,
               description: g.description,
@@ -943,11 +944,12 @@ export const MessagesPage: React.FC = () => {
         const existingThreadUserIds = new Set<number>()
 
         // 1. Group chats from backend 07_files
-        const groupThreads: ChatThread[] = (groupsRes?.groups || []).map((g: any) => {
-          if (g.id) joinGroupRoom(g.id)
+        const groupThreads: ChatThread[] = (groupsRes?.groups || []).map((g: any, idx: number) => {
+          const gid = Number(g.id || g.group_id)
+          if (gid) joinGroupRoom(gid)
           return {
-            id: `group-${g.id}`,
-            groupId: g.id,
+            id: `group-${gid || g.group_uid || idx}`,
+            groupId: gid,
             groupUid: g.group_uid,
             name: g.name,
             description: g.description,
@@ -1207,10 +1209,11 @@ export const MessagesPage: React.FC = () => {
 
       if (res?.group) {
         const g = res.group
-        if (g.id) joinGroupRoom(g.id)
+        const gid = Number(g.id || g.group_id)
+        if (gid) joinGroupRoom(gid)
         const newGroupThread: ChatThread = {
-          id: `group-${g.id}`,
-          groupId: g.id,
+          id: `group-${gid || g.group_uid || Date.now()}`,
+          groupId: gid,
           groupUid: g.group_uid,
           name: g.name,
           description: g.description,
