@@ -234,8 +234,9 @@ export const MessagesPage: React.FC = () => {
   const [selectedFriendIds, setSelectedFriendIds] = useState<number[]>([])
   const [isChatMenuOpen, setIsChatMenuOpen] = useState(false)
   const [deleteModalMsg, setDeleteModalMsg] = useState<BackendMessage | null>(null)
+  const [friendIds, setFriendIds] = useState<Set<number>>(new Set())
 
-  // Filtered friends list (excluding currently logged in user & removed friends)
+  // Filtered friends list (ONLY users who are accepted connections / friends, excluding removed)
   const currentUid = getStoredAuth()?.unique_id || getStoredAuth()?.user?.user_uid
   const friendsList = useMemo(() => {
     let currentRemoved = new Set<number>()
@@ -246,9 +247,12 @@ export const MessagesPage: React.FC = () => {
     } catch {}
 
     return allDbUsers.filter(
-      (u) => u.user_uid !== currentUid && !currentRemoved.has(Number(u.id))
+      (u) =>
+        u.user_uid !== currentUid &&
+        friendIds.has(Number(u.id)) &&
+        !currentRemoved.has(Number(u.id))
     )
-  }, [allDbUsers, currentUid])
+  }, [allDbUsers, currentUid, friendIds])
 
   // Real-time Online Users Presence for Top Horizontal Friends Row
   const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set())
@@ -262,18 +266,16 @@ export const MessagesPage: React.FC = () => {
     }
   }, [])
 
-  // Friends row: online friends prioritized, sorted and displayed as interactive avatars
+  // Friends row: ONLY actual accepted friends who are CURRENTLY online
   const displayedOnlineFriends = useMemo(() => {
     if (!friendsList || friendsList.length === 0) return []
-    const online = friendsList.filter((f) => {
+    return friendsList.filter((f) => {
       return (
         onlineUserIds.has(String(f.id)) ||
         isUserOnline(f.id) ||
         (f.user_uid && onlineUserIds.has(String(f.user_uid)))
       )
     })
-    if (online.length > 0) return online
-    return friendsList
   }, [friendsList, onlineUserIds])
 
   // Follow & Chat Requests
@@ -306,6 +308,11 @@ export const MessagesPage: React.FC = () => {
         localStorage.setItem(`removed_friends_${myId}`, JSON.stringify([...next]))
       } catch {}
 
+      setFriendIds((prev) => {
+        const next = new Set(prev)
+        next.delete(fid)
+        return next
+      })
       setAllDbUsers((prev) => prev.filter((f) => Number(f.id) !== fid))
       setThreads((prev) => prev.filter((t) => Number(t.userId) !== fid))
       setIsChatMenuOpen(false)
@@ -334,6 +341,11 @@ export const MessagesPage: React.FC = () => {
         localStorage.setItem(`removed_friends_${myId}`, JSON.stringify([...next]))
       } catch {}
 
+      setFriendIds((prev) => {
+        const next = new Set(prev)
+        next.delete(fid)
+        return next
+      })
       setAllDbUsers((prev) => prev.filter((f) => Number(f.id) !== fid))
       setThreads((prev) => prev.filter((t) => Number(t.userId) !== fid))
       setActiveChat(null)
@@ -587,14 +599,22 @@ export const MessagesPage: React.FC = () => {
           } catch {}
 
           const friendsMap = new Map<number, any>()
+          const validFriendIds = new Set<number>()
           ;(followingRes?.following || []).forEach((u: any) => {
             const fid = Number(u?.id)
-            if (fid && !currentRemoved.has(fid)) friendsMap.set(fid, u)
+            if (fid && !currentRemoved.has(fid)) {
+              friendsMap.set(fid, u)
+              validFriendIds.add(fid)
+            }
           })
           ;(followersRes?.followers || []).forEach((u: any) => {
             const fid = Number(u?.id)
-            if (fid && !currentRemoved.has(fid)) friendsMap.set(fid, u)
+            if (fid && !currentRemoved.has(fid)) {
+              friendsMap.set(fid, u)
+              validFriendIds.add(fid)
+            }
           })
+          setFriendIds(validFriendIds)
 
           const existingThreadUserIds = new Set<number>()
 
@@ -815,6 +835,7 @@ export const MessagesPage: React.FC = () => {
 
       // Move conversation immediately into main active inbox threads
       if (senderId) {
+        setFriendIds((prev) => new Set([...prev, Number(senderId)]))
         startOrGetChat(senderId, token).catch(() => null)
         sendFollowRequest(senderId, token).catch(() => {})
 
