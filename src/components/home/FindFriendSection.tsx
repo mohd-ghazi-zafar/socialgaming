@@ -86,6 +86,17 @@ export const FindFriendSection: React.FC<FindFriendSectionProps> = ({ onJoinRoom
   const [removingFriendId, setRemovingFriendId] = useState<number | null>(null)
   const [toastMsg, setToastMsg] = useState('')
 
+  // Persistent tracking of removed friend IDs so removals persist across reloads
+  const [removedFriendIds, setRemovedFriendIds] = useState<Set<number>>(() => {
+    try {
+      const myId = getStoredAuth()?.user?.id
+      const saved = localStorage.getItem(`removed_friends_${myId}`)
+      return saved ? new Set(JSON.parse(saved)) : new Set()
+    } catch {
+      return new Set()
+    }
+  })
+
   const showToast = (msg: string) => {
     setToastMsg(msg)
     setTimeout(() => setToastMsg(''), 2500)
@@ -104,34 +115,57 @@ export const FindFriendSection: React.FC<FindFriendSectionProps> = ({ onJoinRoom
     const token = getAuthToken()
     if (!token) return
 
-    setRemovingFriendId(friend.id)
-    try {
-      await unfollowUser(friend.id, token)
-      setFriends((prev) => prev.filter((f) => f.id !== friend.id))
-      setExistingFriendIds((prev) => {
+    const fid = Number(friend.id)
+    setRemovingFriendId(fid)
+
+    // 1. Persist to removed friends cache so reloads never resurrect them
+    setRemovedFriendIds((prev) => {
+      const next = new Set(prev)
+      next.add(fid)
+      try {
+        const myId = getStoredAuth()?.user?.id
+        localStorage.setItem(`removed_friends_${myId}`, JSON.stringify([...next]))
+      } catch {}
+      return next
+    })
+
+    // 2. Immediately remove from local friends list with robust type-safe filtering
+    setFriends((prev) =>
+      prev.filter(
+        (f) =>
+          Number(f.id) !== fid &&
+          (f.user_uid && friend.user_uid
+            ? f.user_uid.toLowerCase() !== friend.user_uid.toLowerCase()
+            : true)
+      )
+    )
+
+    // 3. Remove from existing friends sets so they become discoverable in All Users tab
+    setExistingFriendIds((prev) => {
+      const next = new Set(prev)
+      next.delete(fid)
+      return next
+    })
+    if (friend.user_uid) {
+      setExistingFriendUids((prev) => {
         const next = new Set(prev)
-        next.delete(Number(friend.id))
+        next.delete(friend.user_uid.toLowerCase())
         return next
       })
-      if (friend.user_uid) {
-        setExistingFriendUids((prev) => {
-          const next = new Set(prev)
-          next.delete(friend.user_uid.toLowerCase())
-          return next
-        })
-      }
-      if (friend.name) {
-        setExistingFriendNames((prev) => {
-          const next = new Set(prev)
-          next.delete(friend.name.toLowerCase())
-          return next
-        })
-      }
-      showToast(`${friend.name} removed from friends`)
-    } catch {
-      // Even on API error, remove locally for immediate responsive UI
-      setFriends((prev) => prev.filter((f) => f.id !== friend.id))
-      showToast(`${friend.name} removed from friends`)
+    }
+    if (friend.name) {
+      setExistingFriendNames((prev) => {
+        const next = new Set(prev)
+        next.delete(friend.name.toLowerCase())
+        return next
+      })
+    }
+
+    showToast(`${friend.name} removed from friends`)
+
+    // 4. Send API request to backend (gracefully caught if target was only a follower)
+    try {
+      await unfollowUser(friend.id, token).catch(() => {})
     } finally {
       setRemovingFriendId(null)
     }
@@ -186,43 +220,50 @@ export const FindFriendSection: React.FC<FindFriendSectionProps> = ({ onJoinRoom
 
       const followingList = followingRes?.following || []
       const followersList = followersRes?.followers || []
-      const inboxChats = inboxRes?.chats || []
 
-      // Build comprehensive friend identifiers from followers, following, and active chats
+      // Read current removed friend IDs from storage
+      let currentRemoved = new Set<number>()
+      try {
+        const myId = getStoredAuth()?.user?.id
+        const saved = localStorage.getItem(`removed_friends_${myId}`)
+        if (saved) currentRemoved = new Set(JSON.parse(saved))
+      } catch {}
+
+      // Build comprehensive friend identifiers from followers & following (excluding removed)
       const friendIdSet = new Set<number>()
       const friendUidSet = new Set<string>()
       const friendNameSet = new Set<string>()
 
       followingList.forEach((f: any) => {
-        if (f.id) friendIdSet.add(Number(f.id))
-        if (f.following_id) friendIdSet.add(Number(f.following_id))
-        if (f.unique_id) friendUidSet.add(String(f.unique_id).toLowerCase())
-        if (f.user_uid) friendUidSet.add(String(f.user_uid).toLowerCase())
-        if (f.name) friendNameSet.add(String(f.name).toLowerCase())
+        const fid = Number(f.id || f.following_id)
+        if (fid && !currentRemoved.has(fid)) {
+          friendIdSet.add(fid)
+          if (f.unique_id) friendUidSet.add(String(f.unique_id).toLowerCase())
+          if (f.user_uid) friendUidSet.add(String(f.user_uid).toLowerCase())
+          if (f.name) friendNameSet.add(String(f.name).toLowerCase())
+        }
       })
 
       followersList.forEach((f: any) => {
-        if (f.id) friendIdSet.add(Number(f.id))
-        if (f.follower_id) friendIdSet.add(Number(f.follower_id))
-        if (f.unique_id) friendUidSet.add(String(f.unique_id).toLowerCase())
-        if (f.user_uid) friendUidSet.add(String(f.user_uid).toLowerCase())
-        if (f.name) friendNameSet.add(String(f.name).toLowerCase())
-      })
-
-      inboxChats.forEach((c: any) => {
-        if (c.player_id) friendIdSet.add(Number(c.player_id))
-        if (c.player_uid) friendUidSet.add(String(c.player_uid).toLowerCase())
-        if (c.player_name) friendNameSet.add(String(c.player_name).toLowerCase())
+        const fid = Number(f.id || f.follower_id)
+        if (fid && !currentRemoved.has(fid)) {
+          friendIdSet.add(fid)
+          if (f.unique_id) friendUidSet.add(String(f.unique_id).toLowerCase())
+          if (f.user_uid) friendUidSet.add(String(f.user_uid).toLowerCase())
+          if (f.name) friendNameSet.add(String(f.name).toLowerCase())
+        }
       })
 
       setExistingFriendIds(friendIdSet)
       setExistingFriendUids(friendUidSet)
       setExistingFriendNames(friendNameSet)
 
-      // Map friends with enriched user details
+      // Map friends with enriched user details (excluding any removed user)
       const matchedFriends = others.filter((u) => {
+        const uid = Number(u.id)
+        if (currentRemoved.has(uid)) return false
         return (
-          friendIdSet.has(Number(u.id)) ||
+          friendIdSet.has(uid) ||
           (u.user_uid && friendUidSet.has(String(u.user_uid).toLowerCase())) ||
           (u.name && friendNameSet.has(String(u.name).toLowerCase()))
         )
@@ -542,12 +583,15 @@ export const FindFriendSection: React.FC<FindFriendSectionProps> = ({ onJoinRoom
 
                       <button
                         type="button"
-                        onClick={() => handleRemoveFriend(friend)}
-                        disabled={removingFriendId === friend.id}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleRemoveFriend(friend)
+                        }}
+                        disabled={Number(removingFriendId) === Number(friend.id)}
                         className="p-1.5 rounded-full bg-rose-500/10 hover:bg-rose-500/20 active:scale-90 text-rose-400 border border-rose-500/20 transition-all duration-150 cursor-pointer disabled:opacity-50"
                         title={`Remove ${friend.name}`}
                       >
-                        {removingFriendId === friend.id ? (
+                        {Number(removingFriendId) === Number(friend.id) ? (
                           <Loader2 className="w-3.5 h-3.5 animate-spin" />
                         ) : (
                           <UserMinus className="w-3.5 h-3.5" />

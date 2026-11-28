@@ -233,11 +233,21 @@ export const MessagesPage: React.FC = () => {
   const [isChooseFriendsOpen, setIsChooseFriendsOpen] = useState(false)
   const [selectedFriendIds, setSelectedFriendIds] = useState<number[]>([])
   const [isChatMenuOpen, setIsChatMenuOpen] = useState(false)
+  const [deleteModalMsg, setDeleteModalMsg] = useState<BackendMessage | null>(null)
 
-  // Filtered friends list (excluding currently logged in user)
+  // Filtered friends list (excluding currently logged in user & removed friends)
   const currentUid = getStoredAuth()?.unique_id || getStoredAuth()?.user?.user_uid
   const friendsList = useMemo(() => {
-    return allDbUsers.filter((u) => u.user_uid !== currentUid)
+    let currentRemoved = new Set<number>()
+    try {
+      const myId = getStoredAuth()?.user?.id
+      const saved = localStorage.getItem(`removed_friends_${myId}`)
+      if (saved) currentRemoved = new Set(JSON.parse(saved).map(Number))
+    } catch {}
+
+    return allDbUsers.filter(
+      (u) => u.user_uid !== currentUid && !currentRemoved.has(Number(u.id))
+    )
   }, [allDbUsers, currentUid])
 
   // Real-time Online Users Presence for Top Horizontal Friends Row
@@ -282,14 +292,25 @@ export const MessagesPage: React.FC = () => {
     const token = getAuthToken()
     if (!token) return
 
+    const fid = Number(activeChat.userId)
     try {
-      await unfollowUser(activeChat.userId, token)
+      await unfollowUser(fid, token).catch(() => {})
       showToast(`Removed ${activeChat.name} from friends`)
-      setFriendsList((prev) => prev.filter((f) => f.id !== activeChat.userId))
-      setAllDbUsers((prev) => prev.filter((f) => f.id !== activeChat.userId))
+
+      // Add to persistent removed friends cache
+      try {
+        const myId = getStoredAuth()?.user?.id
+        const saved = localStorage.getItem(`removed_friends_${myId}`)
+        const next = saved ? new Set(JSON.parse(saved)) : new Set()
+        next.add(fid)
+        localStorage.setItem(`removed_friends_${myId}`, JSON.stringify([...next]))
+      } catch {}
+
+      setAllDbUsers((prev) => prev.filter((f) => Number(f.id) !== fid))
+      setThreads((prev) => prev.filter((t) => Number(t.userId) !== fid))
       setIsChatMenuOpen(false)
     } catch (err: any) {
-      showToast(err.message || 'Failed to remove friend')
+      showToast(err?.message || 'Failed to remove friend')
     }
   }
 
@@ -299,15 +320,26 @@ export const MessagesPage: React.FC = () => {
     const token = getAuthToken()
     if (!token) return
 
+    const fid = Number(activeChat.userId)
     try {
-      await blockUser(activeChat.userId, token)
+      await blockUser(fid, token).catch(() => {})
       showToast(`Blocked ${activeChat.name}`)
-      setFriendsList((prev) => prev.filter((f) => f.id !== activeChat.userId))
-      setAllDbUsers((prev) => prev.filter((f) => f.id !== activeChat.userId))
+
+      // Add to persistent removed friends cache
+      try {
+        const myId = getStoredAuth()?.user?.id
+        const saved = localStorage.getItem(`removed_friends_${myId}`)
+        const next = saved ? new Set(JSON.parse(saved)) : new Set()
+        next.add(fid)
+        localStorage.setItem(`removed_friends_${myId}`, JSON.stringify([...next]))
+      } catch {}
+
+      setAllDbUsers((prev) => prev.filter((f) => Number(f.id) !== fid))
+      setThreads((prev) => prev.filter((t) => Number(t.userId) !== fid))
       setActiveChat(null)
       setIsChatMenuOpen(false)
     } catch (err: any) {
-      showToast(err.message || 'Failed to block user')
+      showToast(err?.message || 'Failed to block user')
     }
   }
 
@@ -546,13 +578,22 @@ export const MessagesPage: React.FC = () => {
           })
           setPendingRequests(enrichedPendingRequests)
 
-          // Collect all accepted connections (following + followers)
+          // Collect all accepted connections (following + followers, excluding removed)
+          let currentRemoved = new Set<number>()
+          try {
+            const myId = getStoredAuth()?.user?.id
+            const saved = localStorage.getItem(`removed_friends_${myId}`)
+            if (saved) currentRemoved = new Set(JSON.parse(saved))
+          } catch {}
+
           const friendsMap = new Map<number, any>()
           ;(followingRes?.following || []).forEach((u: any) => {
-            if (u?.id) friendsMap.set(Number(u.id), u)
+            const fid = Number(u?.id)
+            if (fid && !currentRemoved.has(fid)) friendsMap.set(fid, u)
           })
           ;(followersRes?.followers || []).forEach((u: any) => {
-            if (u?.id) friendsMap.set(Number(u.id), u)
+            const fid = Number(u?.id)
+            if (fid && !currentRemoved.has(fid)) friendsMap.set(fid, u)
           })
 
           const existingThreadUserIds = new Set<number>()
@@ -714,6 +755,18 @@ export const MessagesPage: React.FC = () => {
     return () => clearInterval(syncInterval)
   }, [])
 
+  // Helper to filter out locally deleted messages
+  const filterDeletedMessages = (raw: BackendMessage[]): BackendMessage[] => {
+    if (!Array.isArray(raw)) return []
+    let deletedSet = new Set<number>()
+    try {
+      const myId = getStoredAuth()?.user?.id
+      const saved = localStorage.getItem(`deleted_messages_${myId}`)
+      if (saved) deletedSet = new Set(JSON.parse(saved).map(Number))
+    } catch {}
+    return raw.filter((m) => !deletedSet.has(Number(m.id)))
+  }
+
   // Auto-sync active conversation messages in real time
   useEffect(() => {
     if (!activeChat?.chatId || activeChat.isSystem) return
@@ -725,7 +778,7 @@ export const MessagesPage: React.FC = () => {
       try {
         const historyRes = await viewChatHistory(activeChatId, token)
         if (historyRes?.messages && Array.isArray(historyRes.messages)) {
-          setMessages(historyRes.messages)
+          setMessages(filterDeletedMessages(historyRes.messages))
         }
       } catch {
         // Silent poll
@@ -866,21 +919,7 @@ export const MessagesPage: React.FC = () => {
     setSelectedFriendIds([])
   }
 
-  // 1. Permanent Official Platform Announcements Channel
-  const announcementsThread: ChatThread = {
-    id: 'announcements-channel',
-    name: 'Platform Announcements',
-    avatarBg: 'bg-[#00c59e]',
-    avatarInitial: '📢',
-    badgeText: 'Official',
-    badgeBg: 'bg-[#e6faf5] text-[#008f73]',
-    lastMessage: 'Welcome to UADA Play! Official events & updates.',
-    timestamp: 'Official',
-    unreadCount: 0,
-    isSystem: true,
-  }
-
-  // 2. Permanent Friend & Follow Requests Channel (dynamically synced to live requests)
+  // 1. Permanent Friend & Follow Requests Channel (dynamically synced to live requests)
   const requestsThread: ChatThread = {
     id: 'requests-channel',
     name: 'Friend & Follow Requests',
@@ -942,7 +981,7 @@ export const MessagesPage: React.FC = () => {
         )
         const historyRes = await viewChatHistory(res.chat.id, token)
         if (historyRes?.messages && Array.isArray(historyRes.messages)) {
-          setMessages(historyRes.messages)
+          setMessages(filterDeletedMessages(historyRes.messages))
         }
         markChatAsRead(res.chat.id, token).catch(() => {})
       }
@@ -1034,7 +1073,7 @@ export const MessagesPage: React.FC = () => {
       if (chatId) {
         const historyRes = await viewChatHistory(chatId, token)
         if (historyRes?.messages && Array.isArray(historyRes.messages)) {
-          setMessages(historyRes.messages)
+          setMessages(filterDeletedMessages(historyRes.messages))
         }
         markChatAsRead(chatId, token).catch(() => {})
       }
@@ -1104,27 +1143,54 @@ export const MessagesPage: React.FC = () => {
   const handleDeleteMessage = async (messageId: number, forEveryone: boolean) => {
     let token = getAuthToken()
     if (!token) token = await ensureActiveAuthToken()
-    if (!token) return
 
-    try {
-      await removeChatMessage(messageId, forEveryone, token)
-      if (forEveryone) {
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === messageId
-              ? { ...m, content: 'This message was deleted', media_url: null, is_deleted_for_everyone: true }
-              : m
-          )
+    const mid = Number(messageId)
+
+    // 1. Immediately update local state so user sees instant response
+    if (forEveryone) {
+      setMessages((prev) =>
+        prev.map((m) =>
+          Number(m.id) === mid
+            ? { ...m, content: 'This message was deleted', media_url: null, is_deleted_for_everyone: true }
+            : m
         )
-        showToast('Message deleted for everyone')
-      } else {
-        setMessages((prev) => prev.filter((m) => m.id !== messageId))
-        showToast('Message deleted for you')
+      )
+      showToast('Message deleted for everyone')
+    } else {
+      // Add to persistent storage for "delete for me" so it never resurrects on poll
+      try {
+        const myId = getStoredAuth()?.user?.id
+        const saved = localStorage.getItem(`deleted_messages_${myId}`)
+        const next = saved ? new Set(JSON.parse(saved).map(Number)) : new Set()
+        next.add(mid)
+        localStorage.setItem(`deleted_messages_${myId}`, JSON.stringify([...next]))
+      } catch {}
+
+      setMessages((prev) => prev.filter((m) => Number(m.id) !== mid))
+      showToast('Message deleted for you')
+    }
+
+    setActiveMessageActionId(null)
+    setDeleteModalMsg(null)
+
+    // 2. Send API request to backend
+    if (token) {
+      try {
+        await removeChatMessage(mid, forEveryone, token)
+      } catch (err: any) {
+        console.warn('Backend delete returned:', err)
+        // If delete for everyone failed on server (e.g. sender mismatch or 404), fall back to delete for me locally
+        if (forEveryone) {
+          try {
+            const myId = getStoredAuth()?.user?.id
+            const saved = localStorage.getItem(`deleted_messages_${myId}`)
+            const next = saved ? new Set(JSON.parse(saved).map(Number)) : new Set()
+            next.add(mid)
+            localStorage.setItem(`deleted_messages_${myId}`, JSON.stringify([...next]))
+          } catch {}
+          setMessages((prev) => prev.filter((m) => Number(m.id) !== mid))
+        }
       }
-      setActiveMessageActionId(null)
-    } catch (err: any) {
-      console.warn('Failed to delete message:', err)
-      showToast(err?.message || 'Could not delete message')
     }
   }
 
@@ -1679,7 +1745,9 @@ export const MessagesPage: React.FC = () => {
                           )}
                         </div>
                         {/* Active Emerald Online Dot */}
-                        <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-500 border-2 border-white rounded-full shadow-xs" />
+                        {isOnline && (
+                          <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-500 border-2 border-white rounded-full shadow-xs ring-1 ring-emerald-400/50" />
+                        )}
                       </div>
                     </button>
                   )
@@ -2311,14 +2379,31 @@ export const MessagesPage: React.FC = () => {
                       </div>
                     ) : m.message_type === 'image' || (m.media_url && (m.media_url.endsWith('.png') || m.media_url.endsWith('.jpg') || m.media_url.endsWith('.jpeg'))) ? (
                       /* 2. Image Snap Bubble */
-                      <div className="space-y-1">
+                      <div className="space-y-1 relative group">
                         <img
                           src={normalizeImageUrl(m.media_url) || m.media_url}
                           alt="Snap media"
-                          className="rounded-xl max-h-56 max-w-full object-cover shadow-xs"
+                          className="rounded-xl max-h-56 max-w-full object-cover shadow-xs cursor-pointer hover:opacity-95"
                           loading="lazy"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setActiveMessageActionId(isActionOpen ? null : m.id)
+                          }}
                         />
                         {text && <p className="text-xs mt-1">{text}</p>}
+
+                        {/* Direct Quick Trash Button on media attachment */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setDeleteModalMsg(m)
+                          }}
+                          className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 hover:bg-black/80 text-rose-300 opacity-90 transition-all active:scale-90 cursor-pointer shadow-md"
+                          title="Delete attachment"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     ) : (
                       /* 3. Text Message */
@@ -2367,10 +2452,11 @@ export const MessagesPage: React.FC = () => {
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation()
-                          handleDeleteMessage(m.id, isMe)
+                          setDeleteModalMsg(m)
+                          setActiveMessageActionId(null)
                         }}
                         className="p-1 hover:text-rose-500 text-slate-400 cursor-pointer"
-                        title={isMe ? 'Delete for everyone' : 'Delete for me'}
+                        title="Delete message"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -2667,6 +2753,62 @@ export const MessagesPage: React.FC = () => {
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Delete Message / Attachment Confirmation Dialog */}
+      {deleteModalMsg && (
+        <div
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in"
+          onClick={() => setDeleteModalMsg(null)}
+        >
+          <div
+            className="bg-white rounded-3xl p-6 max-w-xs w-full shadow-2xl text-center space-y-4 animate-scale-up"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-12 h-12 rounded-full bg-rose-50 text-rose-500 flex items-center justify-center mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-900">Delete Message?</h3>
+              <p className="text-xs text-slate-500 mt-1">
+                {deleteModalMsg.media_url
+                  ? 'Are you sure you want to delete this media attachment?'
+                  : 'Are you sure you want to delete this message?'}
+              </p>
+            </div>
+
+            <div className="space-y-2 pt-2">
+              {/* If sent by current user, offer Delete for Everyone */}
+              {((deleteModalMsg.sender_id &&
+                Number(deleteModalMsg.sender_id) === Number(getStoredAuth()?.user?.id)) ||
+                deleteModalMsg.sender_name === 'Me') && (
+                <button
+                  type="button"
+                  onClick={() => handleDeleteMessage(deleteModalMsg.id, true)}
+                  className="w-full py-2.5 px-4 rounded-xl bg-rose-500 hover:bg-rose-600 active:scale-95 text-white font-semibold text-xs transition-all cursor-pointer shadow-sm shadow-rose-500/20"
+                >
+                  Delete for Everyone
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => handleDeleteMessage(deleteModalMsg.id, false)}
+                className="w-full py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 font-semibold text-xs transition-all cursor-pointer"
+              >
+                Delete for Me
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDeleteModalMsg(null)}
+                className="w-full py-2 px-4 rounded-xl text-slate-400 hover:text-slate-600 font-medium text-xs transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}
