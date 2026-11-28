@@ -1,0 +1,998 @@
+[
+  {
+    "name": "Login Leader",
+    "method": "POST",
+    "path": "/api/signuproute/auth/social",
+    "status": 201,
+    "duration_ms": 204,
+    "success": true,
+    "data": {
+      "message": "Signed up with google successfully",
+      "unique_id": "G-675816-2026",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MTcsInVzZXJfdWlkIjoiRy02NzU4MTYtMjAyNiIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzk1ODczMzc1fQ.viblmSQB5WF-A_NL1k5kErDR7kD8dlzWukZUxnEvEXI",
+      "user": {
+        "id": 17,
+        "user_uid": "G-675816-2026",
+        "role": "user",
+        "auth_provider": "google",
+        "provider_id": "gc-leader-test-01",
+        "email": "gcleader@uada.play",
+        "name": "Group Leader",
+        "gender": "male",
+        "age": 25,
+        "profile_image": null,
+        "is_verified": true,
+        "created_at": "2026-11-28T13:42:55.128Z"
+      }
+    }
+  },
+  {
+    "name": "Login Member 1",
+    "method": "POST",
+    "path": "/api/signuproute/auth/social",
+    "status": 201,
+    "duration_ms": 123,
+    "success": true,
+    "data": {
+      "message": "Signed up with apple successfully",
+      "unique_id": "G-117255-2026",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MTgsInVzZXJfdWlkIjoiRy0xMTcyNTUtMjAyNiIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzk1ODczMzc1fQ.d8bMcmbWul1PWhVLkb6Nc8X0oU9Ya30D1hMMhO5Py5U",
+      "user": {
+        "id": 18,
+        "user_uid": "G-117255-2026",
+        "role": "user",
+        "auth_provider": "apple",
+        "provider_id": "gc-member-test-02",
+        "email": "gcmember1@uada.play",
+        "name": "Squad Member 1",
+        "gender": "female",
+        "age": 22,
+        "profile_image": null,
+        "is_verified": true,
+        "created_at": "2026-11-28T13:42:55.253Z"
+      }
+    }
+  },
+  {
+    "name": "Login Member 2",
+    "method": "POST",
+    "path": "/api/signuproute/auth/social",
+    "status": 201,
+    "duration_ms": 113,
+    "success": true,
+    "data": {
+      "message": "Signed up with facebook successfully",
+      "unique_id": "G-460054-2026",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MTksInVzZXJfdWlkIjoiRy00NjAwNTQtMjAyNiIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzk1ODczMzc1fQ.Cv7nRBVVbqUIWs90rWcwVabb-EHy_OvOckfPcMyatxY",
+      "user": {
+        "id": 19,
+        "user_uid": "G-460054-2026",
+        "role": "user",
+        "auth_provider": "facebook",
+        "provider_id": "gc-member-test-03",
+        "email": "gcmember2@uada.play",
+        "name": "Squad Member 2",
+        "gender": "male",
+        "age": 23,
+        "profile_image": null,
+        "is_verified": true,
+        "created_at": "2026-11-28T13:42:55.367Z"
+      }
+    }
+  },
+  {
+    "name": "Login Invitee",
+    "method": "POST",
+    "path": "/api/signuproute/auth/social",
+    "status": 201,
+    "duration_ms": 122,
+    "success": true,
+    "data": {
+      "message": "Signed up with google successfully",
+      "unique_id": "G-218201-2026",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MjAsInVzZXJfdWlkIjoiRy0yMTgyMDEtMjAyNiIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzk1ODczMzc1fQ.Ul_Zs36_NPCHVFsQto7qqH8bdqQWPbixZ5AmTbH1g2M",
+      "user": {
+        "id": 20,
+        "user_uid": "G-218201-2026",
+        "role": "user",
+        "auth_provider": "google",
+        "provider_id": "gc-invitee-test-04",
+        "email": "gcinvitee@uada.play",
+        "name": "Guest Invitee",
+        "gender": "female",
+        "age": 21,
+        "profile_image": null,
+        "is_verified": true,
+        "created_at": "2026-11-28T13:42:55.488Z"
+      }
+    }
+  },
+  {
+    "name": "POST /api/groupchat/create",
+    "method": "POST",
+    "path": "/api/groupchat/create",
+    "status": 201,
+    "duration_ms": 126,
+    "success": true,
+    "data": {
+      "message": "Group created successfully",
+      "group": {
+        "id": 1,
+        "group_uid": "GRP-326596-2026",
+        "name": "Alpha Strike Squad",
+        "description": "High stakes Ludo and voice lobby team",
+        "group_image": null,
+        "created_by": 17,
+        "invite_code": "a8bd56f60701",
+        "only_admins_can_send": false,
+        "only_admins_can_edit_info": true,
+        "last_message": "Group created",
+        "last_message_type": "system",
+        "last_message_sender_name": null,
+        "last_message_at": "2026-11-28T13:42:55.606Z",
+        "created_at": "2026-11-28T13:42:55.606Z",
+        "updated_at": "2026-11-28T13:42:55.606Z",
+        "member_count": 2,
+        "members": [
+          {
+            "user_id": 17,
+            "role": "owner",
+            "is_muted": false,
+            "joined_at": "2026-11-28T13:42:55.606Z",
+            "user_uid": "G-675816-2026",
+            "name": "Group Leader",
+            "profile_image": null,
+            "is_online": false,
+            "last_seen": "2026-11-28T13:42:55.128Z"
+          },
+          {
+            "user_id": 18,
+            "role": "member",
+            "is_muted": false,
+            "joined_at": "2026-11-28T13:42:55.606Z",
+            "user_uid": "G-117255-2026",
+            "name": "Squad Member 1",
+            "profile_image": null,
+            "is_online": false,
+            "last_seen": "2026-11-28T13:42:55.253Z"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "GET /api/groupchat/my-groups (Owner)",
+    "method": "GET",
+    "path": "/api/groupchat/my-groups",
+    "status": 200,
+    "duration_ms": 114,
+    "success": true,
+    "data": {
+      "message": "Groups fetched successfully",
+      "count": 1,
+      "groups": [
+        {
+          "group_id": 1,
+          "group_uid": "GRP-326596-2026",
+          "name": "Alpha Strike Squad",
+          "description": "High stakes Ludo and voice lobby team",
+          "group_image": null,
+          "last_message": "Group created",
+          "last_message_type": "system",
+          "last_message_sender_name": null,
+          "last_message_at": "2026-11-28T13:42:55.606Z",
+          "role": "owner",
+          "unread_count": 0,
+          "is_muted": false,
+          "member_count": 2
+        }
+      ]
+    }
+  },
+  {
+    "name": "GET /api/groupchat/my-groups (Member)",
+    "method": "GET",
+    "path": "/api/groupchat/my-groups",
+    "status": 200,
+    "duration_ms": 116,
+    "success": true,
+    "data": {
+      "message": "Groups fetched successfully",
+      "count": 1,
+      "groups": [
+        {
+          "group_id": 1,
+          "group_uid": "GRP-326596-2026",
+          "name": "Alpha Strike Squad",
+          "description": "High stakes Ludo and voice lobby team",
+          "group_image": null,
+          "last_message": "Group created",
+          "last_message_type": "system",
+          "last_message_sender_name": null,
+          "last_message_at": "2026-11-28T13:42:55.606Z",
+          "role": "member",
+          "unread_count": 0,
+          "is_muted": false,
+          "member_count": 2
+        }
+      ]
+    }
+  },
+  {
+    "name": "GET /api/groupchat/1",
+    "method": "GET",
+    "path": "/api/groupchat/1",
+    "status": 200,
+    "duration_ms": 119,
+    "success": true,
+    "data": {
+      "message": "Group details fetched",
+      "group": {
+        "id": 1,
+        "group_uid": "GRP-326596-2026",
+        "name": "Alpha Strike Squad",
+        "description": "High stakes Ludo and voice lobby team",
+        "group_image": null,
+        "created_by": 17,
+        "invite_code": "a8bd56f60701",
+        "only_admins_can_send": false,
+        "only_admins_can_edit_info": true,
+        "last_message": "Group created",
+        "last_message_type": "system",
+        "last_message_sender_name": null,
+        "last_message_at": "2026-11-28T13:42:55.606Z",
+        "created_at": "2026-11-28T13:42:55.606Z",
+        "updated_at": "2026-11-28T13:42:55.606Z",
+        "member_count": 2,
+        "members": [
+          {
+            "user_id": 17,
+            "role": "owner",
+            "is_muted": false,
+            "joined_at": "2026-11-28T13:42:55.606Z",
+            "user_uid": "G-675816-2026",
+            "name": "Group Leader",
+            "profile_image": null,
+            "is_online": false,
+            "last_seen": "2026-11-28T13:42:55.128Z"
+          },
+          {
+            "user_id": 18,
+            "role": "member",
+            "is_muted": false,
+            "joined_at": "2026-11-28T13:42:55.606Z",
+            "user_uid": "G-117255-2026",
+            "name": "Squad Member 1",
+            "profile_image": null,
+            "is_online": false,
+            "last_seen": "2026-11-28T13:42:55.253Z"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "PUT /api/groupchat/1/update",
+    "method": "PUT",
+    "path": "/api/groupchat/1/update",
+    "status": 200,
+    "duration_ms": 128,
+    "success": true,
+    "data": {
+      "message": "Group updated",
+      "group": {
+        "id": 1,
+        "group_uid": "GRP-326596-2026",
+        "name": "Alpha Strike Squad Elite",
+        "description": "Verified elite gaming squad",
+        "group_image": null,
+        "created_by": 17,
+        "invite_code": "a8bd56f60701",
+        "only_admins_can_send": false,
+        "only_admins_can_edit_info": true,
+        "last_message": "Group created",
+        "last_message_type": "system",
+        "last_message_sender_name": null,
+        "last_message_at": "2026-11-28T13:42:55.606Z",
+        "created_at": "2026-11-28T13:42:55.606Z",
+        "updated_at": "2026-11-28T13:42:56.093Z"
+      }
+    }
+  },
+  {
+    "name": "POST /api/groupchat/1/members",
+    "method": "POST",
+    "path": "/api/groupchat/1/members",
+    "status": 200,
+    "duration_ms": 140,
+    "success": true,
+    "data": {
+      "message": "Members added",
+      "added_user_ids": [
+        19
+      ],
+      "group": {
+        "id": 1,
+        "group_uid": "GRP-326596-2026",
+        "name": "Alpha Strike Squad Elite",
+        "description": "Verified elite gaming squad",
+        "group_image": null,
+        "created_by": 17,
+        "invite_code": "a8bd56f60701",
+        "only_admins_can_send": false,
+        "only_admins_can_edit_info": true,
+        "last_message": "Added Squad Member 2 to the group",
+        "last_message_type": "system",
+        "last_message_sender_name": "Group Leader",
+        "last_message_at": "2026-11-28T13:42:56.226Z",
+        "created_at": "2026-11-28T13:42:55.606Z",
+        "updated_at": "2026-11-28T13:42:56.226Z",
+        "member_count": 3,
+        "members": [
+          {
+            "user_id": 17,
+            "role": "owner",
+            "is_muted": false,
+            "joined_at": "2026-11-28T13:42:55.606Z",
+            "user_uid": "G-675816-2026",
+            "name": "Group Leader",
+            "profile_image": null,
+            "is_online": false,
+            "last_seen": "2026-11-28T13:42:55.128Z"
+          },
+          {
+            "user_id": 18,
+            "role": "member",
+            "is_muted": false,
+            "joined_at": "2026-11-28T13:42:55.606Z",
+            "user_uid": "G-117255-2026",
+            "name": "Squad Member 1",
+            "profile_image": null,
+            "is_online": false,
+            "last_seen": "2026-11-28T13:42:55.253Z"
+          },
+          {
+            "user_id": 19,
+            "role": "member",
+            "is_muted": false,
+            "joined_at": "2026-11-28T13:42:56.219Z",
+            "user_uid": "G-460054-2026",
+            "name": "Squad Member 2",
+            "profile_image": null,
+            "is_online": false,
+            "last_seen": "2026-11-28T13:42:55.367Z"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "PUT /api/groupchat/1/members/18/role",
+    "method": "PUT",
+    "path": "/api/groupchat/1/members/18/role",
+    "status": 200,
+    "duration_ms": 122,
+    "success": true,
+    "data": {
+      "message": "Member role updated to admin",
+      "data": {
+        "id": 2,
+        "group_id": 1,
+        "user_id": 18,
+        "role": "admin",
+        "unread_count": 0,
+        "is_muted": false,
+        "joined_at": "2026-11-28T13:42:55.606Z"
+      }
+    }
+  },
+  {
+    "name": "POST /api/groupchat/1/send (Msg 1 - Owner)",
+    "method": "POST",
+    "path": "/api/groupchat/1/send",
+    "status": 201,
+    "duration_ms": 137,
+    "success": true,
+    "data": {
+      "message": "Group message sent",
+      "data": {
+        "id": 3,
+        "group_id": 1,
+        "sender_id": 17,
+        "message_type": "text",
+        "content": "Welcome to Alpha Strike Squad Elite! Let's conquer the board.",
+        "media_url": null,
+        "media_duration": null,
+        "waveform": [],
+        "file_name": null,
+        "file_size": null,
+        "reply_to_message_id": null,
+        "mentions": [],
+        "reactions": {},
+        "read_by": [
+          {
+            "read_at": "2026-11-28T13:42:56.489Z",
+            "user_id": 17
+          }
+        ],
+        "is_edited": false,
+        "is_pinned": false,
+        "is_deleted_for_everyone": false,
+        "deleted_for_users": [],
+        "created_at": "2026-11-28T13:42:56.489Z",
+        "updated_at": "2026-11-28T13:42:56.489Z",
+        "sender_name": "Group Leader",
+        "sender_uid": "G-675816-2026",
+        "sender_image": null,
+        "reply_content": null,
+        "reply_message_type": null,
+        "reply_sender_id": null
+      }
+    }
+  },
+  {
+    "name": "POST /api/groupchat/1/send (Msg 2 - Member)",
+    "method": "POST",
+    "path": "/api/groupchat/1/send",
+    "status": 201,
+    "duration_ms": 155,
+    "success": true,
+    "data": {
+      "message": "Group message sent",
+      "data": {
+        "id": 4,
+        "group_id": 1,
+        "sender_id": 18,
+        "message_type": "text",
+        "content": "Ready when you are! Dice are warmed up \ud83c\udfb2",
+        "media_url": null,
+        "media_duration": null,
+        "waveform": [],
+        "file_name": null,
+        "file_size": null,
+        "reply_to_message_id": null,
+        "mentions": [],
+        "reactions": {},
+        "read_by": [
+          {
+            "read_at": "2026-11-28T13:42:56.644Z",
+            "user_id": 18
+          }
+        ],
+        "is_edited": false,
+        "is_pinned": false,
+        "is_deleted_for_everyone": false,
+        "deleted_for_users": [],
+        "created_at": "2026-11-28T13:42:56.645Z",
+        "updated_at": "2026-11-28T13:42:56.645Z",
+        "sender_name": "Squad Member 1",
+        "sender_uid": "G-117255-2026",
+        "sender_image": null,
+        "reply_content": null,
+        "reply_message_type": null,
+        "reply_sender_id": null
+      }
+    }
+  },
+  {
+    "name": "GET /api/groupchat/1/messages",
+    "method": "GET",
+    "path": "/api/groupchat/1/messages",
+    "status": 200,
+    "duration_ms": 119,
+    "success": true,
+    "data": {
+      "message": "Group history fetched",
+      "group_id": 1,
+      "group_uid": "GRP-326596-2026",
+      "count": 4,
+      "messages": [
+        {
+          "id": 1,
+          "group_id": 1,
+          "sender_id": 17,
+          "message_type": "system",
+          "content": "Created group \"Alpha Strike Squad\"",
+          "media_url": null,
+          "media_duration": null,
+          "waveform": [],
+          "file_name": null,
+          "file_size": null,
+          "reply_to_message_id": null,
+          "mentions": [],
+          "reactions": {},
+          "read_by": [],
+          "is_edited": false,
+          "is_pinned": false,
+          "is_deleted_for_everyone": false,
+          "deleted_for_users": [],
+          "created_at": "2026-11-28T13:42:55.606Z",
+          "updated_at": "2026-11-28T13:42:55.606Z",
+          "sender_name": "Group Leader",
+          "sender_uid": "G-675816-2026",
+          "sender_image": null,
+          "reply_content": null,
+          "reply_message_type": null,
+          "reply_sender_id": null
+        },
+        {
+          "id": 2,
+          "group_id": 1,
+          "sender_id": 17,
+          "message_type": "system",
+          "content": "Added Squad Member 2 to the group",
+          "media_url": null,
+          "media_duration": null,
+          "waveform": [],
+          "file_name": null,
+          "file_size": null,
+          "reply_to_message_id": null,
+          "mentions": [],
+          "reactions": {},
+          "read_by": [
+            {
+              "read_at": "2026-11-28T13:42:56.222Z",
+              "user_id": 17
+            }
+          ],
+          "is_edited": false,
+          "is_pinned": false,
+          "is_deleted_for_everyone": false,
+          "deleted_for_users": [],
+          "created_at": "2026-11-28T13:42:56.222Z",
+          "updated_at": "2026-11-28T13:42:56.222Z",
+          "sender_name": "Group Leader",
+          "sender_uid": "G-675816-2026",
+          "sender_image": null,
+          "reply_content": null,
+          "reply_message_type": null,
+          "reply_sender_id": null
+        },
+        {
+          "id": 3,
+          "group_id": 1,
+          "sender_id": 17,
+          "message_type": "text",
+          "content": "Welcome to Alpha Strike Squad Elite! Let's conquer the board.",
+          "media_url": null,
+          "media_duration": null,
+          "waveform": [],
+          "file_name": null,
+          "file_size": null,
+          "reply_to_message_id": null,
+          "mentions": [],
+          "reactions": {},
+          "read_by": [
+            {
+              "read_at": "2026-11-28T13:42:56.489Z",
+              "user_id": 17
+            }
+          ],
+          "is_edited": false,
+          "is_pinned": false,
+          "is_deleted_for_everyone": false,
+          "deleted_for_users": [],
+          "created_at": "2026-11-28T13:42:56.489Z",
+          "updated_at": "2026-11-28T13:42:56.489Z",
+          "sender_name": "Group Leader",
+          "sender_uid": "G-675816-2026",
+          "sender_image": null,
+          "reply_content": null,
+          "reply_message_type": null,
+          "reply_sender_id": null
+        },
+        {
+          "id": 4,
+          "group_id": 1,
+          "sender_id": 18,
+          "message_type": "text",
+          "content": "Ready when you are! Dice are warmed up \ud83c\udfb2",
+          "media_url": null,
+          "media_duration": null,
+          "waveform": [],
+          "file_name": null,
+          "file_size": null,
+          "reply_to_message_id": null,
+          "mentions": [],
+          "reactions": {},
+          "read_by": [
+            {
+              "read_at": "2026-11-28T13:42:56.644Z",
+              "user_id": 18
+            }
+          ],
+          "is_edited": false,
+          "is_pinned": false,
+          "is_deleted_for_everyone": false,
+          "deleted_for_users": [],
+          "created_at": "2026-11-28T13:42:56.645Z",
+          "updated_at": "2026-11-28T13:42:56.645Z",
+          "sender_name": "Squad Member 1",
+          "sender_uid": "G-117255-2026",
+          "sender_image": null,
+          "reply_content": null,
+          "reply_message_type": null,
+          "reply_sender_id": null
+        }
+      ]
+    }
+  },
+  {
+    "name": "PUT /api/groupchat/1/read",
+    "method": "PUT",
+    "path": "/api/groupchat/1/read",
+    "status": 200,
+    "duration_ms": 121,
+    "success": true,
+    "data": {
+      "message": "Group messages marked read",
+      "read_message_ids": [
+        3,
+        2,
+        1
+      ]
+    }
+  },
+  {
+    "name": "GET /api/groupchat/1/search?q=Dice",
+    "method": "GET",
+    "path": "/api/groupchat/1/search?q=Dice",
+    "status": 200,
+    "duration_ms": 120,
+    "success": true,
+    "data": {
+      "count": 1,
+      "messages": [
+        {
+          "id": 4,
+          "group_id": 1,
+          "sender_id": 18,
+          "message_type": "text",
+          "content": "Ready when you are! Dice are warmed up \ud83c\udfb2",
+          "media_url": null,
+          "media_duration": null,
+          "waveform": [],
+          "file_name": null,
+          "file_size": null,
+          "reply_to_message_id": null,
+          "mentions": [],
+          "reactions": {},
+          "read_by": [
+            {
+              "read_at": "2026-11-28T13:42:56.644Z",
+              "user_id": 18
+            }
+          ],
+          "is_edited": false,
+          "is_pinned": false,
+          "is_deleted_for_everyone": false,
+          "deleted_for_users": [],
+          "created_at": "2026-11-28T13:42:56.645Z",
+          "updated_at": "2026-11-28T13:42:56.645Z"
+        }
+      ]
+    }
+  },
+  {
+    "name": "PUT /api/groupchat/message/3/react",
+    "method": "PUT",
+    "path": "/api/groupchat/message/3/react",
+    "status": 200,
+    "duration_ms": 112,
+    "success": true,
+    "data": {
+      "message": "Reaction updated",
+      "data": {
+        "id": 3,
+        "group_id": 1,
+        "sender_id": 17,
+        "message_type": "text",
+        "content": "Welcome to Alpha Strike Squad Elite! Let's conquer the board.",
+        "media_url": null,
+        "media_duration": null,
+        "waveform": [],
+        "file_name": null,
+        "file_size": null,
+        "reply_to_message_id": null,
+        "mentions": [],
+        "reactions": {
+          "18": "\ud83d\udd25"
+        },
+        "read_by": [
+          {
+            "read_at": "2026-11-28T13:42:56.489Z",
+            "user_id": 17
+          },
+          {
+            "read_at": "2026-11-28T13:42:56.890Z",
+            "user_id": 18
+          }
+        ],
+        "is_edited": false,
+        "is_pinned": false,
+        "is_deleted_for_everyone": false,
+        "deleted_for_users": [],
+        "created_at": "2026-11-28T13:42:56.489Z",
+        "updated_at": "2026-11-28T13:42:57.126Z"
+      }
+    }
+  },
+  {
+    "name": "PUT /api/groupchat/message/3/edit",
+    "method": "PUT",
+    "path": "/api/groupchat/message/3/edit",
+    "status": 200,
+    "duration_ms": 112,
+    "success": true,
+    "data": {
+      "message": "Message edited",
+      "data": {
+        "id": 3,
+        "group_id": 1,
+        "sender_id": 17,
+        "message_type": "text",
+        "content": "Welcome to Alpha Strike Squad Elite! (Edited by Captain)",
+        "media_url": null,
+        "media_duration": null,
+        "waveform": [],
+        "file_name": null,
+        "file_size": null,
+        "reply_to_message_id": null,
+        "mentions": [],
+        "reactions": {
+          "18": "\ud83d\udd25"
+        },
+        "read_by": [
+          {
+            "read_at": "2026-11-28T13:42:56.489Z",
+            "user_id": 17
+          },
+          {
+            "read_at": "2026-11-28T13:42:56.890Z",
+            "user_id": 18
+          }
+        ],
+        "is_edited": true,
+        "is_pinned": false,
+        "is_deleted_for_everyone": false,
+        "deleted_for_users": [],
+        "created_at": "2026-11-28T13:42:56.489Z",
+        "updated_at": "2026-11-28T13:42:57.238Z"
+      }
+    }
+  },
+  {
+    "name": "PUT /api/groupchat/message/3/pin",
+    "method": "PUT",
+    "path": "/api/groupchat/message/3/pin",
+    "status": 200,
+    "duration_ms": 117,
+    "success": true,
+    "data": {
+      "message": "Pinned",
+      "data": {
+        "id": 3,
+        "group_id": 1,
+        "sender_id": 17,
+        "message_type": "text",
+        "content": "Welcome to Alpha Strike Squad Elite! (Edited by Captain)",
+        "media_url": null,
+        "media_duration": null,
+        "waveform": [],
+        "file_name": null,
+        "file_size": null,
+        "reply_to_message_id": null,
+        "mentions": [],
+        "reactions": {
+          "18": "\ud83d\udd25"
+        },
+        "read_by": [
+          {
+            "read_at": "2026-11-28T13:42:56.489Z",
+            "user_id": 17
+          },
+          {
+            "read_at": "2026-11-28T13:42:56.890Z",
+            "user_id": 18
+          }
+        ],
+        "is_edited": true,
+        "is_pinned": true,
+        "is_deleted_for_everyone": false,
+        "deleted_for_users": [],
+        "created_at": "2026-11-28T13:42:56.489Z",
+        "updated_at": "2026-11-28T13:42:57.355Z"
+      }
+    }
+  },
+  {
+    "name": "POST /api/groupchat/join/a8bd56f60701",
+    "method": "POST",
+    "path": "/api/groupchat/join/a8bd56f60701",
+    "status": 200,
+    "duration_ms": 122,
+    "success": true,
+    "data": {
+      "message": "Joined group successfully",
+      "group": {
+        "id": 1,
+        "group_uid": "GRP-326596-2026",
+        "name": "Alpha Strike Squad Elite",
+        "description": "Verified elite gaming squad",
+        "group_image": null,
+        "created_by": 17,
+        "invite_code": "a8bd56f60701",
+        "only_admins_can_send": false,
+        "only_admins_can_edit_info": true,
+        "last_message": "Guest Invitee joined via invite link",
+        "last_message_type": "system",
+        "last_message_sender_name": "Guest Invitee",
+        "last_message_at": "2026-11-28T13:42:57.476Z",
+        "created_at": "2026-11-28T13:42:55.606Z",
+        "updated_at": "2026-11-28T13:42:57.476Z",
+        "member_count": 4,
+        "members": [
+          {
+            "user_id": 17,
+            "role": "owner",
+            "is_muted": false,
+            "joined_at": "2026-11-28T13:42:55.606Z",
+            "user_uid": "G-675816-2026",
+            "name": "Group Leader",
+            "profile_image": null,
+            "is_online": false,
+            "last_seen": "2026-11-28T13:42:55.128Z"
+          },
+          {
+            "user_id": 18,
+            "role": "admin",
+            "is_muted": false,
+            "joined_at": "2026-11-28T13:42:55.606Z",
+            "user_uid": "G-117255-2026",
+            "name": "Squad Member 1",
+            "profile_image": null,
+            "is_online": false,
+            "last_seen": "2026-11-28T13:42:55.253Z"
+          },
+          {
+            "user_id": 19,
+            "role": "member",
+            "is_muted": false,
+            "joined_at": "2026-11-28T13:42:56.219Z",
+            "user_uid": "G-460054-2026",
+            "name": "Squad Member 2",
+            "profile_image": null,
+            "is_online": false,
+            "last_seen": "2026-11-28T13:42:55.367Z"
+          },
+          {
+            "user_id": 20,
+            "role": "member",
+            "is_muted": false,
+            "joined_at": "2026-11-28T13:42:57.471Z",
+            "user_uid": "G-218201-2026",
+            "name": "Guest Invitee",
+            "profile_image": null,
+            "is_online": false,
+            "last_seen": "2026-11-28T13:42:55.488Z"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "DELETE /api/groupchat/message/4",
+    "method": "DELETE",
+    "path": "/api/groupchat/message/4",
+    "status": 200,
+    "duration_ms": 112,
+    "success": true,
+    "data": {
+      "message": "Message deleted",
+      "data": {
+        "id": 4,
+        "group_id": 1,
+        "sender_id": 18,
+        "message_type": "text",
+        "content": "Ready when you are! Dice are warmed up \ud83c\udfb2",
+        "media_url": null,
+        "media_duration": null,
+        "waveform": [],
+        "file_name": null,
+        "file_size": null,
+        "reply_to_message_id": null,
+        "mentions": [],
+        "reactions": {},
+        "read_by": [
+          {
+            "read_at": "2026-11-28T13:42:56.644Z",
+            "user_id": 18
+          }
+        ],
+        "is_edited": false,
+        "is_pinned": false,
+        "is_deleted_for_everyone": false,
+        "deleted_for_users": [
+          18
+        ],
+        "created_at": "2026-11-28T13:42:56.645Z",
+        "updated_at": "2026-11-28T13:42:56.645Z"
+      }
+    }
+  },
+  {
+    "name": "DELETE /api/groupchat/1/members/19",
+    "method": "DELETE",
+    "path": "/api/groupchat/1/members/19",
+    "status": 200,
+    "duration_ms": 120,
+    "success": true,
+    "data": {
+      "message": "Member removed from group"
+    }
+  },
+  {
+    "name": "POST /api/groupchat/1/leave",
+    "method": "POST",
+    "path": "/api/groupchat/1/leave",
+    "status": 200,
+    "duration_ms": 121,
+    "success": true,
+    "data": {
+      "message": "You left the group"
+    }
+  },
+  {
+    "name": "GET /api/groupchat/1",
+    "method": "GET",
+    "path": "/api/groupchat/1",
+    "status": 200,
+    "duration_ms": 112,
+    "success": true,
+    "data": {
+      "message": "Group details fetched",
+      "group": {
+        "id": 1,
+        "group_uid": "GRP-326596-2026",
+        "name": "Alpha Strike Squad Elite",
+        "description": "Verified elite gaming squad",
+        "group_image": null,
+        "created_by": 17,
+        "invite_code": "a8bd56f60701",
+        "only_admins_can_send": false,
+        "only_admins_can_edit_info": true,
+        "last_message": "Guest Invitee left the group",
+        "last_message_type": "system",
+        "last_message_sender_name": "Guest Invitee",
+        "last_message_at": "2026-11-28T13:42:57.833Z",
+        "created_at": "2026-11-28T13:42:55.606Z",
+        "updated_at": "2026-11-28T13:42:57.833Z",
+        "member_count": 2,
+        "members": [
+          {
+            "user_id": 17,
+            "role": "owner",
+            "is_muted": false,
+            "joined_at": "2026-11-28T13:42:55.606Z",
+            "user_uid": "G-675816-2026",
+            "name": "Group Leader",
+            "profile_image": null,
+            "is_online": false,
+            "last_seen": "2026-11-28T13:42:55.128Z"
+          },
+          {
+            "user_id": 18,
+            "role": "admin",
+            "is_muted": false,
+            "joined_at": "2026-11-28T13:42:55.606Z",
+            "user_uid": "G-117255-2026",
+            "name": "Squad Member 1",
+            "profile_image": null,
+            "is_online": false,
+            "last_seen": "2026-11-28T13:42:55.253Z"
+          }
+        ]
+      }
+    }
+  }
+]

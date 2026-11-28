@@ -1,0 +1,2198 @@
+const pool = require("../../config/connection");
+
+// =====================================================
+// CREATE GROUP CHAT TABLES
+// =====================================================
+(async () => {
+    try {
+        // 1. Groups Table
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS groups (
+                id SERIAL PRIMARY KEY,
+                group_uid VARCHAR(50) UNIQUE NOT NULL,       -- e.g., GRP-482910-2026
+                name VARCHAR(120) NOT NULL,
+                description TEXT,
+                group_image TEXT,
+                created_by INT NOT NULL,
+                invite_code VARCHAR(32) UNIQUE NOT NULL,
+
+                only_admins_can_send BOOLEAN DEFAULT FALSE,
+                only_admins_can_edit_info BOOLEAN DEFAULT TRUE,
+
+                last_message TEXT,
+                last_message_type VARCHAR(30) DEFAULT 'system',
+                last_message_sender_name VARCHAR(120),
+                last_message_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+                FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+            );
+        `);
+
+        // 2. Group Members Table (Roles, Unread Count, Mute)
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS group_members (
+                id SERIAL PRIMARY KEY,
+                group_id INT NOT NULL,
+                user_id INT NOT NULL,
+                role VARCHAR(20) DEFAULT 'member'
+                    CHECK (role IN ('owner', 'admin', 'member')),
+                unread_count INT DEFAULT 0,
+                is_muted BOOLEAN DEFAULT FALSE,
+                joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+                FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                UNIQUE (group_id, user_id)
+            );
+        `);
+
+        // 3. Group Messages Table (Text, Voice Notes, Media, System Events)
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS group_messages (
+                id SERIAL PRIMARY KEY,
+                group_id INT NOT NULL,
+                sender_id INT NOT NULL,
+
+                message_type VARCHAR(30) NOT NULL DEFAULT 'text'
+                    CHECK (message_type IN ('text', 'voice', 'image', 'video', 'file', 'sticker', 'system')),
+
+                content TEXT,
+                media_url TEXT,
+                media_duration INT,
+                waveform JSONB DEFAULT '[]'::jsonb,
+                file_name VARCHAR(255),
+                file_size VARCHAR(50),
+
+                reply_to_message_id INT,
+                mentions JSONB DEFAULT '[]'::jsonb,          -- [userId1, userId2]
+                reactions JSONB DEFAULT '{}'::jsonb,         -- { "userId": "🔥" }
+                read_by JSONB DEFAULT '[]'::jsonb,           -- [{ "user_id": 2, "read_at": "..." }]
+
+                is_edited BOOLEAN DEFAULT FALSE,
+                is_pinned BOOLEAN DEFAULT FALSE,
+                is_deleted_for_everyone BOOLEAN DEFAULT FALSE,
+                deleted_for_users JSONB DEFAULT '[]'::jsonb,
+
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+                FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+                FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (reply_to_message_id) REFERENCES group_messages(id) ON DELETE SET NULL
+            );
+        `);
+
+        await pool.query(`
+            CREATE INDEX IF NOT EXISTS idx_group_messages_group_id ON group_messages(group_id, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_group_members_user_id ON group_members(user_id);
+        `);
+
+        console.log("Groups, group_members, and group_messages tables ready");
+    } catch (err) {
+        console.error("Error creating group chat tables:", err.message);
+    }
+})();
+
+
+// =====================================================
+// 1. CREATE A NEW GROUP & ADD INITIAL MEMBERS
+// =====================================================
+const createGroup = async ({ group_uid, name, description, group_image, created_by, invite_code, member_ids = [] }) => {
+    const client = await pool.connect();
+    try {
+        await client.query("BEGIN");
+
+        const groupRes = await client.query(
+            `
+            INSERT INTO groups (group_uid, name, description, group_image, created_by, invite_code, last_message, last_message_type)
+            VALUES ($1, $2, $3, $4, $5, $6, 'Group created', 'system')
+            RETURNING *
+            `,
+            [group_uid, name, description || null, group_image || null, created_by, invite_code]
+        );
+        const group = groupRes.rows[0];
+
+        // Add creator as 'owner'
+        await client.query(
+            `INSERT INTO group_members (group_id, user_id, role) VALUES ($1, $2, 'owner')`,
+            [group.id, created_by]
+        );
+
+        // Deduplicate & add initial members
+        const uniqueMembers = [...new Set(member_ids.map(Number))].filter((id) => id && id !== Number(created_by));
+        for (const memberId of uniqueMembers) {
+            await client.query(
+                `
+                INSERT INTO group_members (group_id, user_id, role)
+                VALUES ($1, $2, 'member')
+                ON CONFLICT (group_id, user_id) DO NOTHING
+                `,
+                [group.id, memberId]
+            );
+        }
+
+        // Insert system welcome message
+        await client.query(
+            `
+            INSERT INTO group_messages (group_id, sender_id, message_type, content)
+            VALUES ($1, $2, 'system', $3)
+            `,
+            [group.id, created_by, `Created group "${name}"`]
+        );
+
+        await client.query("COMMIT");
+        return await getGroupDetails(group.id);
+    } catch (err) {
+        await client.query("ROLLBACK");
+        throw err;
+    } finally {
+        client.release();
+    }
+};
+
+
+// =====================================================
+// 2. GET GROUP DETAILS + FULL MEMBER LIST
+// =====================================================
+const getGroupDetails = async (identifier) => {
+    const isNumeric = /^\d+$/.test(String(identifier));
+    const column = isNumeric ? "g.id" : "g.group_uid";
+
+    const groupRes = await pool.query(
+        `SELECT g.* FROM groups g WHERE ${column} = $1 LIMIT 1`,
+        [identifier]
+    );
+    const group = groupRes.rows[0];
+    if (!group) return null;
+
+    const membersRes = await pool.query(
+        `
+        SELECT
+            gm.user_id,
+            gm.role,
+            gm.is_muted,
+            gm.joined_at,
+            u.user_uid,
+            u.name,
+            u.profile_image,
+            u.is_online,
+            u.last_seen
+        FROM group_members gm
+        JOIN users u ON u.id = gm.user_id
+        WHERE gm.group_id = $1
+        ORDER BY
+            CASE gm.role WHEN 'owner' THEN 1 WHEN 'admin' THEN 2 ELSE 3 END,
+            gm.joined_at ASC
+        `,
+        [group.id]
+    );
+
+    return {
+        ...group,
+        member_count: membersRes.rows.length,
+        members: membersRes.rows
+    };
+};
+
+
+// =====================================================
+// 3. CHECK MEMBER ROLE IN GROUP
+// =====================================================
+const getMemberRole = async (groupId, userId) => {
+    const res = await pool.query(
+        `SELECT role, is_muted FROM group_members WHERE group_id = $1 AND user_id = $2 LIMIT 1`,
+        [groupId, Number(userId)]
+    );
+    return res.rows[0] || null;
+};
+
+
+// =====================================================
+// 4. GET USER'S GROUP LIST (GROUP INBOX)
+// =====================================================
+const getUserGroups = async (userId) => {
+    const result = await pool.query(
+        `
+        SELECT
+            g.id AS group_id,
+            g.group_uid,
+            g.name,
+            g.description,
+            g.group_image,
+            g.last_message,
+            g.last_message_type,
+            g.last_message_sender_name,
+            g.last_message_at,
+            gm.role,
+            gm.unread_count,
+            gm.is_muted,
+            (SELECT COUNT(*)::int FROM group_members WHERE group_id = g.id) AS member_count
+        FROM group_members gm
+        JOIN groups g ON g.id = gm.group_id
+        WHERE gm.user_id = $1
+        ORDER BY g.last_message_at DESC
+        `,
+        [Number(userId)]
+    );
+    return result.rows;
+};
+
+
+// =====================================================
+// 5. ADD MEMBERS TO GROUP
+// =====================================================
+const addGroupMembers = async (groupId, addedByUserId, userIds = []) => {
+    const addedUsers = [];
+    for (const uid of userIds) {
+        const res = await pool.query(
+            `
+            INSERT INTO group_members (group_id, user_id, role)
+            VALUES ($1, $2, 'member')
+            ON CONFLICT (group_id, user_id) DO NOTHING
+            RETURNING user_id
+            `,
+            [groupId, Number(uid)]
+        );
+        if (res.rows[0]) addedUsers.push(Number(uid));
+    }
+
+    if (addedUsers.length > 0) {
+        const namesRes = await pool.query(
+            `SELECT name FROM users WHERE id = ANY($1::int[])`,
+            [addedUsers]
+        );
+        const namesList = namesRes.rows.map((r) => r.name).join(", ");
+        await sendGroupMessage({
+            group_id: groupId,
+            sender_id: addedByUserId,
+            message_type: "system",
+            content: `Added ${namesList} to the group`
+        });
+    }
+
+    return addedUsers;
+};
+
+
+// =====================================================
+// 6. REMOVE MEMBER OR LEAVE GROUP
+// =====================================================
+const removeGroupMember = async (groupId, actorId, targetUserId, isSelfLeave = false) => {
+    const targetUserRes = await pool.query(`SELECT name FROM users WHERE id = $1`, [targetUserId]);
+    const targetName = targetUserRes.rows[0]?.name || "Member";
+
+    const delRes = await pool.query(
+        `DELETE FROM group_members WHERE group_id = $1 AND user_id = $2 RETURNING *`,
+        [groupId, Number(targetUserId)]
+    );
+
+    if (!delRes.rows[0]) return null;
+
+    const systemText = isSelfLeave ? `${targetName} left the group` : `Removed ${targetName} from the group`;
+    const sysMsg = await sendGroupMessage({
+        group_id: groupId,
+        sender_id: actorId,
+        message_type: "system",
+        content: systemText
+    });
+
+    return { removed: delRes.rows[0], systemMessage: sysMsg };
+};
+
+
+// =====================================================
+// 7. PROMOTE / DEMOTE GROUP ADMIN
+// =====================================================
+const updateMemberRole = async (groupId, targetUserId, newRole) => {
+    const res = await pool.query(
+        `
+        UPDATE group_members
+        SET role = $1
+        WHERE group_id = $2 AND user_id = $3 AND role != 'owner'
+        RETURNING *
+        `,
+        [newRole, groupId, Number(targetUserId)]
+    );
+    return res.rows[0] || null;
+};
+
+
+// =====================================================
+// 8. UPDATE GROUP SETTINGS / INFO
+// =====================================================
+const updateGroupSettings = async (groupId, updates) => {
+    const { name, description, group_image, only_admins_can_send, only_admins_can_edit_info } = updates;
+    const res = await pool.query(
+        `
+        UPDATE groups
+        SET
+            name = COALESCE($1, name),
+            description = COALESCE($2, description),
+            group_image = COALESCE($3, group_image),
+            only_admins_can_send = COALESCE($4, only_admins_can_send),
+            only_admins_can_edit_info = COALESCE($5, only_admins_can_edit_info),
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = $6
+        RETURNING *
+        `,
+        [name, description, group_image, only_admins_can_send, only_admins_can_edit_info, groupId]
+    );
+    return res.rows[0] || null;
+};
+
+
+// =====================================================
+// 9. JOIN GROUP VIA INVITE CODE
+// =====================================================
+const joinGroupByInviteCode = async (inviteCode, userId) => {
+    const groupRes = await pool.query(`SELECT * FROM groups WHERE invite_code = $1 LIMIT 1`, [inviteCode]);
+    const group = groupRes.rows[0];
+    if (!group) return null;
+
+    await pool.query(
+        `
+        INSERT INTO group_members (group_id, user_id, role)
+        VALUES ($1, $2, 'member')
+        ON CONFLICT (group_id, user_id) DO NOTHING
+        `,
+        [group.id, Number(userId)]
+    );
+
+    const userRes = await pool.query(`SELECT name FROM users WHERE id = $1`, [userId]);
+    await sendGroupMessage({
+        group_id: group.id,
+        sender_id: userId,
+        message_type: "system",
+        content: `${userRes.rows[0]?.name || "A player"} joined via invite link`
+    });
+
+    return await getGroupDetails(group.id);
+};
+
+
+// =====================================================
+// 10. SEND GROUP MESSAGE (TEXT, VOICE, MEDIA, MENTIONS)
+// =====================================================
+const sendGroupMessage = async (msgData) => {
+    const {
+        group_id,
+        sender_id,
+        message_type = "text",
+        content = null,
+        media_url = null,
+        media_duration = null,
+        waveform = [],
+        file_name = null,
+        file_size = null,
+        reply_to_message_id = null,
+        mentions = []
+    } = msgData;
+
+    const initialReadBy = JSON.stringify([{ user_id: Number(sender_id), read_at: new Date().toISOString() }]);
+
+    const insertRes = await pool.query(
+        `
+        INSERT INTO group_messages (
+            group_id, sender_id, message_type, content, media_url, media_duration,
+            waveform, file_name, file_size, reply_to_message_id, mentions, read_by
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11::jsonb, $12::jsonb)
+        RETURNING id
+        `,
+        [
+            group_id,
+            sender_id,
+            message_type,
+            content,
+            media_url,
+            media_duration,
+            JSON.stringify(Array.isArray(waveform) ? waveform : []),
+            file_name,
+            file_size,
+            reply_to_message_id,
+            JSON.stringify(Array.isArray(mentions) ? mentions : []),
+            initialReadBy
+        ]
+    );
+
+    const newMsgId = insertRes.rows[0].id;
+
+    // Fetch full hydrated message
+    const fullRes = await pool.query(
+        `
+        SELECT
+            m.*,
+            sender.name AS sender_name,
+            sender.user_uid AS sender_uid,
+            sender.profile_image AS sender_image,
+            reply.content AS reply_content,
+            reply.message_type AS reply_message_type,
+            reply.sender_id AS reply_sender_id
+        FROM group_messages m
+        JOIN users sender ON sender.id = m.sender_id
+        LEFT JOIN group_messages reply ON reply.id = m.reply_to_message_id
+        WHERE m.id = $1
+        `,
+        [newMsgId]
+    );
+    const hydratedMessage = fullRes.rows[0];
+
+    const previewText =
+        message_type === "text" || message_type === "system"
+            ? content
+            : message_type === "voice"
+            ? `🎤 Voice message (${media_duration || 0}s)`
+            : message_type === "image"
+            ? "📷 Photo"
+            : message_type === "video"
+            ? "🎥 Video"
+            : message_type === "sticker"
+            ? "💟 Sticker"
+            : `📎 ${file_name || "File"}`;
+
+    // Update group's last message preview
+    await pool.query(
+        `
+        UPDATE groups
+        SET
+            last_message = $1,
+            last_message_type = $2,
+            last_message_sender_name = $3,
+            last_message_at = CURRENT_TIMESTAMP,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = $4
+        `,
+        [previewText, message_type, hydratedMessage.sender_name, group_id]
+    );
+
+    // Increment unread_count for all group members except sender
+    if (message_type !== "system") {
+        await pool.query(
+            `
+            UPDATE group_members
+            SET unread_count = unread_count + 1
+            WHERE group_id = $1 AND user_id != $2
+            `,
+            [group_id, Number(sender_id)]
+        );
+    }
+
+    return hydratedMessage;
+};
+
+
+// =====================================================
+// 11. GET PAGINATED GROUP CHAT HISTORY
+// =====================================================
+const getGroupMessages = async (groupId, currentUserId, limit = 50, offset = 0) => {
+    const result = await pool.query(
+        `
+        SELECT
+            m.*,
+            sender.name AS sender_name,
+            sender.user_uid AS sender_uid,
+            sender.profile_image AS sender_image,
+            reply.content AS reply_content,
+            reply.message_type AS reply_message_type,
+            reply.sender_id AS reply_sender_id
+        FROM group_messages m
+        JOIN users sender ON sender.id = m.sender_id
+        LEFT JOIN group_messages reply ON reply.id = m.reply_to_message_id
+        WHERE m.group_id = $1
+          AND NOT (m.deleted_for_users @> to_jsonb($2::int))
+        ORDER BY m.created_at DESC
+        LIMIT $3 OFFSET $4
+        `,
+        [groupId, Number(currentUserId), limit, offset]
+    );
+    return result.rows.reverse();
+};
+
+
+// =====================================================
+// 12. MARK GROUP MESSAGES AS READ (RESET UNREAD + READ_BY)
+// =====================================================
+const markGroupRead = async (groupId, readerId) => {
+    const uid = Number(readerId);
+
+    // Reset unread badge for this user
+    await pool.query(
+        `UPDATE group_members SET unread_count = 0 WHERE group_id = $1 AND user_id = $2`,
+        [groupId, uid]
+    );
+
+    // Append reader to read_by JSONB on recent unread messages
+    const readEntry = JSON.stringify([{ user_id: uid, read_at: new Date().toISOString() }]);
+    const updated = await pool.query(
+        `
+        UPDATE group_messages
+        SET read_by = read_by || $1::jsonb
+        WHERE group_id = $2
+          AND sender_id != $3
+          AND NOT EXISTS (
+              SELECT 1 FROM jsonb_array_elements(read_by) elem
+              WHERE (elem->>'user_id')::int = $3
+          )
+        RETURNING id
+        `,
+        [readEntry, groupId, uid]
+    );
+
+    return updated.rows.map((r) => r.id);
+};
+
+
+// =====================================================
+// 13. REACT, EDIT, DELETE & PIN GROUP MESSAGES
+// =====================================================
+const toggleGroupReaction = async (messageId, userId, emoji) => {
+    const existing = await pool.query(`SELECT reactions, group_id FROM group_messages WHERE id = $1`, [messageId]);
+    if (!existing.rows[0]) return null;
+
+    const reactions = existing.rows[0].reactions || {};
+    const key = String(userId);
+    if (!emoji || reactions[key] === emoji) {
+        delete reactions[key];
+    } else {
+        reactions[key] = emoji;
+    }
+
+    const res = await pool.query(
+        `UPDATE group_messages SET reactions = $1::jsonb, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *`,
+        [JSON.stringify(reactions), messageId]
+    );
+    return res.rows[0];
+};
+
+const editGroupMessage = async (messageId, senderId, newContent) => {
+    const res = await pool.query(
+        `
+        UPDATE group_messages
+        SET content = $1, is_edited = TRUE, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $2 AND sender_id = $3 AND message_type = 'text' AND is_deleted_for_everyone = FALSE
+        RETURNING *
+        `,
+        [newContent, messageId, senderId]
+    );
+    return res.rows[0] || null;
+};
+
+const deleteGroupMessage = async (messageId, userId, isAdminOrOwner = false, deleteForEveryone = false) => {
+    if (deleteForEveryone) {
+        // Sender OR group admin/owner can delete for everyone
+        const query = isAdminOrOwner
+            ? `UPDATE group_messages SET content = 'This message was deleted', media_url = NULL, is_deleted_for_everyone = TRUE, updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *`
+            : `UPDATE group_messages SET content = 'This message was deleted', media_url = NULL, is_deleted_for_everyone = TRUE, updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND sender_id = $2 RETURNING *`;
+        const params = isAdminOrOwner ? [messageId] : [messageId, userId];
+        const res = await pool.query(query, params);
+        return res.rows[0] || null;
+    }
+
+    const res = await pool.query(
+        `
+        UPDATE group_messages
+        SET deleted_for_users = CASE
+            WHEN NOT (deleted_for_users @> to_jsonb($2::int)) THEN deleted_for_users || to_jsonb($2::int)
+            ELSE deleted_for_users
+        END
+        WHERE id = $1
+        RETURNING *
+        `,
+        [messageId, Number(userId)]
+    );
+    return res.rows[0] || null;
+};
+
+const togglePinGroupMessage = async (messageId) => {
+    const res = await pool.query(
+        `UPDATE group_messages SET is_pinned = NOT is_pinned, updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *`,
+        [messageId]
+    );
+    return res.rows[0] || null;
+};
+
+const searchGroupMessages = async (groupId, currentUserId, searchTerm) => {
+    const res = await pool.query(
+        `
+        SELECT * FROM group_messages
+        WHERE group_id = $1
+          AND is_deleted_for_everyone = FALSE
+          AND NOT (deleted_for_users @> to_jsonb($2::int))
+          AND content ILIKE $3
+        ORDER BY created_at DESC
+        `,
+        [groupId, Number(currentUserId), `%${searchTerm}%`]
+    );
+    return res.rows;
+};
+
+module.exports = {
+    createGroup,
+    getGroupDetails,
+    getMemberRole,
+    getUserGroups,
+    addGroupMembers,
+    removeGroupMember,
+    updateMemberRole,
+    updateGroupSettings,
+    joinGroupByInviteCode,
+    sendGroupMessage,
+    getGroupMessages,
+    markGroupRead,
+    toggleGroupReaction,
+    editGroupMessage,
+    deleteGroupMessage,
+    togglePinGroupMessage,
+    searchGroupMessages
+};
+
+const pool = require("../../config/connection");
+
+// =====================================================
+// CREATE GROUP CHAT TABLES
+// =====================================================
+(async () => {
+    try {
+        // 1. Groups Table
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS groups (
+                id SERIAL PRIMARY KEY,
+                group_uid VARCHAR(50) UNIQUE NOT NULL,       -- e.g., GRP-482910-2026
+                name VARCHAR(120) NOT NULL,
+                description TEXT,
+                group_image TEXT,
+                created_by INT NOT NULL,
+                invite_code VARCHAR(32) UNIQUE NOT NULL,
+
+                only_admins_can_send BOOLEAN DEFAULT FALSE,
+                only_admins_can_edit_info BOOLEAN DEFAULT TRUE,
+
+                last_message TEXT,
+                last_message_type VARCHAR(30) DEFAULT 'system',
+                last_message_sender_name VARCHAR(120),
+                last_message_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+                FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+            );
+        `);
+
+        // 2. Group Members Table (Roles, Unread Count, Mute)
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS group_members (
+                id SERIAL PRIMARY KEY,
+                group_id INT NOT NULL,
+                user_id INT NOT NULL,
+                role VARCHAR(20) DEFAULT 'member'
+                    CHECK (role IN ('owner', 'admin', 'member')),
+                unread_count INT DEFAULT 0,
+                is_muted BOOLEAN DEFAULT FALSE,
+                joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+                FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                UNIQUE (group_id, user_id)
+            );
+        `);
+
+        // 3. Group Messages Table (Text, Voice Notes, Media, System Events)
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS group_messages (
+                id SERIAL PRIMARY KEY,
+                group_id INT NOT NULL,
+                sender_id INT NOT NULL,
+
+                message_type VARCHAR(30) NOT NULL DEFAULT 'text'
+                    CHECK (message_type IN ('text', 'voice', 'image', 'video', 'file', 'sticker', 'system')),
+
+                content TEXT,
+                media_url TEXT,
+                media_duration INT,
+                waveform JSONB DEFAULT '[]'::jsonb,
+                file_name VARCHAR(255),
+                file_size VARCHAR(50),
+
+                reply_to_message_id INT,
+                mentions JSONB DEFAULT '[]'::jsonb,          -- [userId1, userId2]
+                reactions JSONB DEFAULT '{}'::jsonb,         -- { "userId": "🔥" }
+                read_by JSONB DEFAULT '[]'::jsonb,           -- [{ "user_id": 2, "read_at": "..." }]
+
+                is_edited BOOLEAN DEFAULT FALSE,
+                is_pinned BOOLEAN DEFAULT FALSE,
+                is_deleted_for_everyone BOOLEAN DEFAULT FALSE,
+                deleted_for_users JSONB DEFAULT '[]'::jsonb,
+
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+                FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+                FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (reply_to_message_id) REFERENCES group_messages(id) ON DELETE SET NULL
+            );
+        `);
+
+        await pool.query(`
+            CREATE INDEX IF NOT EXISTS idx_group_messages_group_id ON group_messages(group_id, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_group_members_user_id ON group_members(user_id);
+        `);
+
+        console.log("Groups, group_members, and group_messages tables ready");
+    } catch (err) {
+        console.error("Error creating group chat tables:", err.message);
+    }
+})();
+
+
+// =====================================================
+// 1. CREATE A NEW GROUP & ADD INITIAL MEMBERS
+// =====================================================
+const createGroup = async ({ group_uid, name, description, group_image, created_by, invite_code, member_ids = [] }) => {
+    const client = await pool.connect();
+    try {
+        await client.query("BEGIN");
+
+        const groupRes = await client.query(
+            `
+            INSERT INTO groups (group_uid, name, description, group_image, created_by, invite_code, last_message, last_message_type)
+            VALUES ($1, $2, $3, $4, $5, $6, 'Group created', 'system')
+            RETURNING *
+            `,
+            [group_uid, name, description || null, group_image || null, created_by, invite_code]
+        );
+        const group = groupRes.rows[0];
+
+        // Add creator as 'owner'
+        await client.query(
+            `INSERT INTO group_members (group_id, user_id, role) VALUES ($1, $2, 'owner')`,
+            [group.id, created_by]
+        );
+
+        // Deduplicate & add initial members
+        const uniqueMembers = [...new Set(member_ids.map(Number))].filter((id) => id && id !== Number(created_by));
+        for (const memberId of uniqueMembers) {
+            await client.query(
+                `
+                INSERT INTO group_members (group_id, user_id, role)
+                VALUES ($1, $2, 'member')
+                ON CONFLICT (group_id, user_id) DO NOTHING
+                `,
+                [group.id, memberId]
+            );
+        }
+
+        // Insert system welcome message
+        await client.query(
+            `
+            INSERT INTO group_messages (group_id, sender_id, message_type, content)
+            VALUES ($1, $2, 'system', $3)
+            `,
+            [group.id, created_by, `Created group "${name}"`]
+        );
+
+        await client.query("COMMIT");
+        return await getGroupDetails(group.id);
+    } catch (err) {
+        await client.query("ROLLBACK");
+        throw err;
+    } finally {
+        client.release();
+    }
+};
+
+
+// =====================================================
+// 2. GET GROUP DETAILS + FULL MEMBER LIST
+// =====================================================
+const getGroupDetails = async (identifier) => {
+    const isNumeric = /^\d+$/.test(String(identifier));
+    const column = isNumeric ? "g.id" : "g.group_uid";
+
+    const groupRes = await pool.query(
+        `SELECT g.* FROM groups g WHERE ${column} = $1 LIMIT 1`,
+        [identifier]
+    );
+    const group = groupRes.rows[0];
+    if (!group) return null;
+
+    const membersRes = await pool.query(
+        `
+        SELECT
+            gm.user_id,
+            gm.role,
+            gm.is_muted,
+            gm.joined_at,
+            u.user_uid,
+            u.name,
+            u.profile_image,
+            u.is_online,
+            u.last_seen
+        FROM group_members gm
+        JOIN users u ON u.id = gm.user_id
+        WHERE gm.group_id = $1
+        ORDER BY
+            CASE gm.role WHEN 'owner' THEN 1 WHEN 'admin' THEN 2 ELSE 3 END,
+            gm.joined_at ASC
+        `,
+        [group.id]
+    );
+
+    return {
+        ...group,
+        member_count: membersRes.rows.length,
+        members: membersRes.rows
+    };
+};
+
+
+// =====================================================
+// 3. CHECK MEMBER ROLE IN GROUP
+// =====================================================
+const getMemberRole = async (groupId, userId) => {
+    const res = await pool.query(
+        `SELECT role, is_muted FROM group_members WHERE group_id = $1 AND user_id = $2 LIMIT 1`,
+        [groupId, Number(userId)]
+    );
+    return res.rows[0] || null;
+};
+
+
+// =====================================================
+// 4. GET USER'S GROUP LIST (GROUP INBOX)
+// =====================================================
+const getUserGroups = async (userId) => {
+    const result = await pool.query(
+        `
+        SELECT
+            g.id AS group_id,
+            g.group_uid,
+            g.name,
+            g.description,
+            g.group_image,
+            g.last_message,
+            g.last_message_type,
+            g.last_message_sender_name,
+            g.last_message_at,
+            gm.role,
+            gm.unread_count,
+            gm.is_muted,
+            (SELECT COUNT(*)::int FROM group_members WHERE group_id = g.id) AS member_count
+        FROM group_members gm
+        JOIN groups g ON g.id = gm.group_id
+        WHERE gm.user_id = $1
+        ORDER BY g.last_message_at DESC
+        `,
+        [Number(userId)]
+    );
+    return result.rows;
+};
+
+
+// =====================================================
+// 5. ADD MEMBERS TO GROUP
+// =====================================================
+const addGroupMembers = async (groupId, addedByUserId, userIds = []) => {
+    const addedUsers = [];
+    for (const uid of userIds) {
+        const res = await pool.query(
+            `
+            INSERT INTO group_members (group_id, user_id, role)
+            VALUES ($1, $2, 'member')
+            ON CONFLICT (group_id, user_id) DO NOTHING
+            RETURNING user_id
+            `,
+            [groupId, Number(uid)]
+        );
+        if (res.rows[0]) addedUsers.push(Number(uid));
+    }
+
+    if (addedUsers.length > 0) {
+        const namesRes = await pool.query(
+            `SELECT name FROM users WHERE id = ANY($1::int[])`,
+            [addedUsers]
+        );
+        const namesList = namesRes.rows.map((r) => r.name).join(", ");
+        await sendGroupMessage({
+            group_id: groupId,
+            sender_id: addedByUserId,
+            message_type: "system",
+            content: `Added ${namesList} to the group`
+        });
+    }
+
+    return addedUsers;
+};
+
+
+// =====================================================
+// 6. REMOVE MEMBER OR LEAVE GROUP
+// =====================================================
+const removeGroupMember = async (groupId, actorId, targetUserId, isSelfLeave = false) => {
+    const targetUserRes = await pool.query(`SELECT name FROM users WHERE id = $1`, [targetUserId]);
+    const targetName = targetUserRes.rows[0]?.name || "Member";
+
+    const delRes = await pool.query(
+        `DELETE FROM group_members WHERE group_id = $1 AND user_id = $2 RETURNING *`,
+        [groupId, Number(targetUserId)]
+    );
+
+    if (!delRes.rows[0]) return null;
+
+    const systemText = isSelfLeave ? `${targetName} left the group` : `Removed ${targetName} from the group`;
+    const sysMsg = await sendGroupMessage({
+        group_id: groupId,
+        sender_id: actorId,
+        message_type: "system",
+        content: systemText
+    });
+
+    return { removed: delRes.rows[0], systemMessage: sysMsg };
+};
+
+
+// =====================================================
+// 7. PROMOTE / DEMOTE GROUP ADMIN
+// =====================================================
+const updateMemberRole = async (groupId, targetUserId, newRole) => {
+    const res = await pool.query(
+        `
+        UPDATE group_members
+        SET role = $1
+        WHERE group_id = $2 AND user_id = $3 AND role != 'owner'
+        RETURNING *
+        `,
+        [newRole, groupId, Number(targetUserId)]
+    );
+    return res.rows[0] || null;
+};
+
+
+// =====================================================
+// 8. UPDATE GROUP SETTINGS / INFO
+// =====================================================
+const updateGroupSettings = async (groupId, updates) => {
+    const { name, description, group_image, only_admins_can_send, only_admins_can_edit_info } = updates;
+    const res = await pool.query(
+        `
+        UPDATE groups
+        SET
+            name = COALESCE($1, name),
+            description = COALESCE($2, description),
+            group_image = COALESCE($3, group_image),
+            only_admins_can_send = COALESCE($4, only_admins_can_send),
+            only_admins_can_edit_info = COALESCE($5, only_admins_can_edit_info),
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = $6
+        RETURNING *
+        `,
+        [name, description, group_image, only_admins_can_send, only_admins_can_edit_info, groupId]
+    );
+    return res.rows[0] || null;
+};
+
+
+// =====================================================
+// 9. JOIN GROUP VIA INVITE CODE
+// =====================================================
+const joinGroupByInviteCode = async (inviteCode, userId) => {
+    const groupRes = await pool.query(`SELECT * FROM groups WHERE invite_code = $1 LIMIT 1`, [inviteCode]);
+    const group = groupRes.rows[0];
+    if (!group) return null;
+
+    await pool.query(
+        `
+        INSERT INTO group_members (group_id, user_id, role)
+        VALUES ($1, $2, 'member')
+        ON CONFLICT (group_id, user_id) DO NOTHING
+        `,
+        [group.id, Number(userId)]
+    );
+
+    const userRes = await pool.query(`SELECT name FROM users WHERE id = $1`, [userId]);
+    await sendGroupMessage({
+        group_id: group.id,
+        sender_id: userId,
+        message_type: "system",
+        content: `${userRes.rows[0]?.name || "A player"} joined via invite link`
+    });
+
+    return await getGroupDetails(group.id);
+};
+
+
+// =====================================================
+// 10. SEND GROUP MESSAGE (TEXT, VOICE, MEDIA, MENTIONS)
+// =====================================================
+const sendGroupMessage = async (msgData) => {
+    const {
+        group_id,
+        sender_id,
+        message_type = "text",
+        content = null,
+        media_url = null,
+        media_duration = null,
+        waveform = [],
+        file_name = null,
+        file_size = null,
+        reply_to_message_id = null,
+        mentions = []
+    } = msgData;
+
+    const initialReadBy = JSON.stringify([{ user_id: Number(sender_id), read_at: new Date().toISOString() }]);
+
+    const insertRes = await pool.query(
+        `
+        INSERT INTO group_messages (
+            group_id, sender_id, message_type, content, media_url, media_duration,
+            waveform, file_name, file_size, reply_to_message_id, mentions, read_by
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11::jsonb, $12::jsonb)
+        RETURNING id
+        `,
+        [
+            group_id,
+            sender_id,
+            message_type,
+            content,
+            media_url,
+            media_duration,
+            JSON.stringify(Array.isArray(waveform) ? waveform : []),
+            file_name,
+            file_size,
+            reply_to_message_id,
+            JSON.stringify(Array.isArray(mentions) ? mentions : []),
+            initialReadBy
+        ]
+    );
+
+    const newMsgId = insertRes.rows[0].id;
+
+    // Fetch full hydrated message
+    const fullRes = await pool.query(
+        `
+        SELECT
+            m.*,
+            sender.name AS sender_name,
+            sender.user_uid AS sender_uid,
+            sender.profile_image AS sender_image,
+            reply.content AS reply_content,
+            reply.message_type AS reply_message_type,
+            reply.sender_id AS reply_sender_id
+        FROM group_messages m
+        JOIN users sender ON sender.id = m.sender_id
+        LEFT JOIN group_messages reply ON reply.id = m.reply_to_message_id
+        WHERE m.id = $1
+        `,
+        [newMsgId]
+    );
+    const hydratedMessage = fullRes.rows[0];
+
+    const previewText =
+        message_type === "text" || message_type === "system"
+            ? content
+            : message_type === "voice"
+            ? `🎤 Voice message (${media_duration || 0}s)`
+            : message_type === "image"
+            ? "📷 Photo"
+            : message_type === "video"
+            ? "🎥 Video"
+            : message_type === "sticker"
+            ? "💟 Sticker"
+            : `📎 ${file_name || "File"}`;
+
+    // Update group's last message preview
+    await pool.query(
+        `
+        UPDATE groups
+        SET
+            last_message = $1,
+            last_message_type = $2,
+            last_message_sender_name = $3,
+            last_message_at = CURRENT_TIMESTAMP,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = $4
+        `,
+        [previewText, message_type, hydratedMessage.sender_name, group_id]
+    );
+
+    // Increment unread_count for all group members except sender
+    if (message_type !== "system") {
+        await pool.query(
+            `
+            UPDATE group_members
+            SET unread_count = unread_count + 1
+            WHERE group_id = $1 AND user_id != $2
+            `,
+            [group_id, Number(sender_id)]
+        );
+    }
+
+    return hydratedMessage;
+};
+
+
+// =====================================================
+// 11. GET PAGINATED GROUP CHAT HISTORY
+// =====================================================
+const getGroupMessages = async (groupId, currentUserId, limit = 50, offset = 0) => {
+    const result = await pool.query(
+        `
+        SELECT
+            m.*,
+            sender.name AS sender_name,
+            sender.user_uid AS sender_uid,
+            sender.profile_image AS sender_image,
+            reply.content AS reply_content,
+            reply.message_type AS reply_message_type,
+            reply.sender_id AS reply_sender_id
+        FROM group_messages m
+        JOIN users sender ON sender.id = m.sender_id
+        LEFT JOIN group_messages reply ON reply.id = m.reply_to_message_id
+        WHERE m.group_id = $1
+          AND NOT (m.deleted_for_users @> to_jsonb($2::int))
+        ORDER BY m.created_at DESC
+        LIMIT $3 OFFSET $4
+        `,
+        [groupId, Number(currentUserId), limit, offset]
+    );
+    return result.rows.reverse();
+};
+
+
+// =====================================================
+// 12. MARK GROUP MESSAGES AS READ (RESET UNREAD + READ_BY)
+// =====================================================
+const markGroupRead = async (groupId, readerId) => {
+    const uid = Number(readerId);
+
+    // Reset unread badge for this user
+    await pool.query(
+        `UPDATE group_members SET unread_count = 0 WHERE group_id = $1 AND user_id = $2`,
+        [groupId, uid]
+    );
+
+    // Append reader to read_by JSONB on recent unread messages
+    const readEntry = JSON.stringify([{ user_id: uid, read_at: new Date().toISOString() }]);
+    const updated = await pool.query(
+        `
+        UPDATE group_messages
+        SET read_by = read_by || $1::jsonb
+        WHERE group_id = $2
+          AND sender_id != $3
+          AND NOT EXISTS (
+              SELECT 1 FROM jsonb_array_elements(read_by) elem
+              WHERE (elem->>'user_id')::int = $3
+          )
+        RETURNING id
+        `,
+        [readEntry, groupId, uid]
+    );
+
+    return updated.rows.map((r) => r.id);
+};
+
+
+// =====================================================
+// 13. REACT, EDIT, DELETE & PIN GROUP MESSAGES
+// =====================================================
+const toggleGroupReaction = async (messageId, userId, emoji) => {
+    const existing = await pool.query(`SELECT reactions, group_id FROM group_messages WHERE id = $1`, [messageId]);
+    if (!existing.rows[0]) return null;
+
+    const reactions = existing.rows[0].reactions || {};
+    const key = String(userId);
+    if (!emoji || reactions[key] === emoji) {
+        delete reactions[key];
+    } else {
+        reactions[key] = emoji;
+    }
+
+    const res = await pool.query(
+        `UPDATE group_messages SET reactions = $1::jsonb, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *`,
+        [JSON.stringify(reactions), messageId]
+    );
+    return res.rows[0];
+};
+
+const editGroupMessage = async (messageId, senderId, newContent) => {
+    const res = await pool.query(
+        `
+        UPDATE group_messages
+        SET content = $1, is_edited = TRUE, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $2 AND sender_id = $3 AND message_type = 'text' AND is_deleted_for_everyone = FALSE
+        RETURNING *
+        `,
+        [newContent, messageId, senderId]
+    );
+    return res.rows[0] || null;
+};
+
+const deleteGroupMessage = async (messageId, userId, isAdminOrOwner = false, deleteForEveryone = false) => {
+    if (deleteForEveryone) {
+        // Sender OR group admin/owner can delete for everyone
+        const query = isAdminOrOwner
+            ? `UPDATE group_messages SET content = 'This message was deleted', media_url = NULL, is_deleted_for_everyone = TRUE, updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *`
+            : `UPDATE group_messages SET content = 'This message was deleted', media_url = NULL, is_deleted_for_everyone = TRUE, updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND sender_id = $2 RETURNING *`;
+        const params = isAdminOrOwner ? [messageId] : [messageId, userId];
+        const res = await pool.query(query, params);
+        return res.rows[0] || null;
+    }
+
+    const res = await pool.query(
+        `
+        UPDATE group_messages
+        SET deleted_for_users = CASE
+            WHEN NOT (deleted_for_users @> to_jsonb($2::int)) THEN deleted_for_users || to_jsonb($2::int)
+            ELSE deleted_for_users
+        END
+        WHERE id = $1
+        RETURNING *
+        `,
+        [messageId, Number(userId)]
+    );
+    return res.rows[0] || null;
+};
+
+const togglePinGroupMessage = async (messageId) => {
+    const res = await pool.query(
+        `UPDATE group_messages SET is_pinned = NOT is_pinned, updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *`,
+        [messageId]
+    );
+    return res.rows[0] || null;
+};
+
+const searchGroupMessages = async (groupId, currentUserId, searchTerm) => {
+    const res = await pool.query(
+        `
+        SELECT * FROM group_messages
+        WHERE group_id = $1
+          AND is_deleted_for_everyone = FALSE
+          AND NOT (deleted_for_users @> to_jsonb($2::int))
+          AND content ILIKE $3
+        ORDER BY created_at DESC
+        `,
+        [groupId, Number(currentUserId), `%${searchTerm}%`]
+    );
+    return res.rows;
+};
+
+module.exports = {
+    createGroup,
+    getGroupDetails,
+    getMemberRole,
+    getUserGroups,
+    addGroupMembers,
+    removeGroupMember,
+    updateMemberRole,
+    updateGroupSettings,
+    joinGroupByInviteCode,
+    sendGroupMessage,
+    getGroupMessages,
+    markGroupRead,
+    toggleGroupReaction,
+    editGroupMessage,
+    deleteGroupMessage,
+    togglePinGroupMessage,
+    searchGroupMessages
+};
+
+const crypto = require("crypto");
+const {
+    createGroup,
+    getGroupDetails,
+    getMemberRole,
+    getUserGroups,
+    addGroupMembers,
+    removeGroupMember,
+    updateMemberRole,
+    updateGroupSettings,
+    joinGroupByInviteCode,
+    sendGroupMessage,
+    getGroupMessages,
+    markGroupRead,
+    toggleGroupReaction,
+    editGroupMessage,
+    deleteGroupMessage,
+    togglePinGroupMessage,
+    searchGroupMessages
+} = require("../../module/chat/groupChatModule");
+
+const generateGroupUid = () => `GRP-${crypto.randomInt(100000, 999999)}-${new Date().getFullYear()}`;
+const generateInviteCode = () => crypto.randomBytes(6).toString("hex");
+
+const formatFileSize = (bytes) => {
+    if (!bytes) return null;
+    return bytes < 1024 * 1024
+        ? `${(bytes / 1024).toFixed(1)} KB`
+        : `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+};
+
+
+// 1. CREATE GROUP (FROM PRIVATE CHAT OR INBOX)
+const createNewGroup = async (req, res) => {
+    try {
+        const createdBy = Number(req.user.id);
+        const { name, description } = req.body;
+
+        if (!name || name.trim() === "") {
+            return res.status(400).json({ message: "Group name is required" });
+        }
+
+        // Parse member_ids (supports JSON array or comma-separated string from form-data)
+        let memberIds = [];
+        if (req.body.member_ids) {
+            if (Array.isArray(req.body.member_ids)) {
+                memberIds = req.body.member_ids;
+            } else {
+                try {
+                    memberIds = JSON.parse(req.body.member_ids);
+                } catch (_) {
+                    memberIds = String(req.body.member_ids).split(",").map((id) => id.trim());
+                }
+            }
+        }
+
+        const uploadedIcon = req.file || req.files?.media?.[0] || req.files?.group_image?.[0] || null;
+        let groupImageUrl = null;
+        if (uploadedIcon) {
+            const baseUrl = `${req.protocol}://${req.get("host")}`;
+            groupImageUrl = `${baseUrl}/uploads/chat/${uploadedIcon.filename}`;
+        }
+
+        const group = await createGroup({
+            group_uid: generateGroupUid(),
+            name: name.trim(),
+            description: description ? description.trim() : null,
+            group_image: groupImageUrl,
+            created_by: createdBy,
+            invite_code: generateInviteCode(),
+            member_ids: memberIds
+        });
+
+        // Notify all added members via Socket.IO
+        const io = req.app.get("io");
+        if (io && group?.members) {
+            group.members.forEach((m) => {
+                io.to(`user_${m.user_id}`).emit("group_created", group);
+            });
+        }
+
+        return res.status(201).json({
+            message: "Group created successfully",
+            group
+        });
+    } catch (err) {
+        console.error("createNewGroup error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 2. GET ALL GROUPS FOR LOGGED-IN USER
+const viewMyGroups = async (req, res) => {
+    try {
+        const groups = await getUserGroups(req.user.id);
+        return res.status(200).json({
+            message: "Groups fetched successfully",
+            count: groups.length,
+            groups
+        });
+    } catch (err) {
+        console.error("viewMyGroups error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 3. GET GROUP DETAILS & MEMBERS
+const viewGroupInfo = async (req, res) => {
+    try {
+        const group = await getGroupDetails(req.params.groupId);
+        if (!group) return res.status(404).json({ message: "Group not found" });
+
+        const membership = await getMemberRole(group.id, req.user.id);
+        if (!membership) return res.status(403).json({ message: "You are not a member of this group" });
+
+        return res.status(200).json({ message: "Group details fetched", group });
+    } catch (err) {
+        console.error("viewGroupInfo error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 4. SEND GROUP MESSAGE (TEXT, VOICE NOTE, IMAGE, VIDEO, FILE, MENTIONS)
+const postGroupMessage = async (req, res) => {
+    try {
+        const senderId = Number(req.user.id);
+        const group = await getGroupDetails(req.params.groupId);
+        if (!group) return res.status(404).json({ message: "Group not found" });
+
+        const membership = await getMemberRole(group.id, senderId);
+        if (!membership) return res.status(403).json({ message: "You are not a member of this group" });
+
+        if (group.only_admins_can_send && membership.role === "member") {
+            return res.status(403).json({ message: "Only admins can send messages in this group" });
+        }
+
+        const { message_type, content, media_duration, waveform, reply_to_message_id, mentions } = req.body;
+
+        const uploadedFile =
+            req.file ||
+            req.files?.media?.[0] ||
+            req.files?.voice?.[0] ||
+            null;
+
+        const allowedTypes = ["text", "voice", "image", "video", "file", "sticker"];
+        const msgType = message_type && allowedTypes.includes(message_type)
+            ? message_type
+            : uploadedFile
+            ? uploadedFile.mimetype.startsWith("audio/")
+                ? "voice"
+                : "file"
+            : "text";
+
+        let mediaUrl = null;
+        let fileName = null;
+        let fileSize = null;
+
+        if (uploadedFile) {
+            const baseUrl = `${req.protocol}://${req.get("host")}`;
+            mediaUrl = `${baseUrl}/uploads/chat/${uploadedFile.filename}`;
+            fileName = uploadedFile.originalname;
+            fileSize = formatFileSize(uploadedFile.size);
+        }
+
+        if (msgType === "text" && (!content || content.trim() === "")) {
+            return res.status(400).json({ message: "Message content cannot be empty" });
+        }
+
+        let parsedWaveform = [];
+        if (waveform) {
+            try { parsedWaveform = typeof waveform === "string" ? JSON.parse(waveform) : waveform; } catch (_) {}
+        }
+
+        let parsedMentions = [];
+        if (mentions) {
+            try { parsedMentions = typeof mentions === "string" ? JSON.parse(mentions) : mentions; } catch (_) {}
+        }
+
+        const savedMessage = await sendGroupMessage({
+            group_id: group.id,
+            sender_id: senderId,
+            message_type: msgType,
+            content: content ? content.trim() : null,
+            media_url: mediaUrl,
+            media_duration: media_duration ? parseInt(media_duration, 10) : null,
+            waveform: parsedWaveform,
+            file_name: fileName,
+            file_size: fileSize,
+            reply_to_message_id: reply_to_message_id ? parseInt(reply_to_message_id, 10) : null,
+            mentions: parsedMentions
+        });
+
+        // Emit live to everyone inside `group_${group.id}` and each member's personal room
+        const io = req.app.get("io");
+        if (io) {
+            io.to(`group_${group.id}`).emit("new_group_message", savedMessage);
+            group.members.forEach((m) => {
+                if (Number(m.user_id) !== senderId) {
+                    io.to(`user_${m.user_id}`).emit("group_inbox_updated", {
+                        group_id: group.id,
+                        group_uid: group.group_uid,
+                        message: savedMessage
+                    });
+                }
+            });
+        }
+
+        return res.status(201).json({
+            message: msgType === "voice" ? "Group voice note sent" : "Group message sent",
+            data: savedMessage
+        });
+    } catch (err) {
+        console.error("postGroupMessage error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 5. GET GROUP CHAT HISTORY
+const viewGroupHistory = async (req, res) => {
+    try {
+        const userId = Number(req.user.id);
+        const group = await getGroupDetails(req.params.groupId);
+        if (!group) return res.status(404).json({ message: "Group not found" });
+
+        const membership = await getMemberRole(group.id, userId);
+        if (!membership) return res.status(403).json({ message: "Access denied" });
+
+        const limit = parseInt(req.query.limit, 10) || 50;
+        const offset = parseInt(req.query.offset, 10) || 0;
+        const messages = await getGroupMessages(group.id, userId, limit, offset);
+
+        return res.status(200).json({
+            message: "Group history fetched",
+            group_id: group.id,
+            group_uid: group.group_uid,
+            count: messages.length,
+            messages
+        });
+    } catch (err) {
+        console.error("viewGroupHistory error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 6. ADD MEMBERS (ADMIN / OWNER ONLY)
+const addMembersToGroup = async (req, res) => {
+    try {
+        const actorId = Number(req.user.id);
+        const group = await getGroupDetails(req.params.groupId);
+        if (!group) return res.status(404).json({ message: "Group not found" });
+
+        const actor = await getMemberRole(group.id, actorId);
+        if (!actor || actor.role === "member") {
+            return res.status(403).json({ message: "Only group admins can add members" });
+        }
+
+        const { user_ids } = req.body;
+        if (!Array.isArray(user_ids) || user_ids.length === 0) {
+            return res.status(400).json({ message: "user_ids array is required" });
+        }
+
+        const added = await addGroupMembers(group.id, actorId, user_ids);
+        const updatedGroup = await getGroupDetails(group.id);
+
+        const io = req.app.get("io");
+        if (io) {
+            io.to(`group_${group.id}`).emit("group_updated", updatedGroup);
+            added.forEach((uid) => io.to(`user_${uid}`).emit("group_created", updatedGroup));
+        }
+
+        return res.status(200).json({ message: "Members added", added_user_ids: added, group: updatedGroup });
+    } catch (err) {
+        console.error("addMembersToGroup error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 7. REMOVE MEMBER OR LEAVE GROUP
+const removeOrLeaveGroup = async (req, res) => {
+    try {
+        const actorId = Number(req.user.id);
+        const targetUserId = Number(req.params.userId || actorId);
+        const isSelfLeave = actorId === targetUserId;
+
+        const group = await getGroupDetails(req.params.groupId);
+        if (!group) return res.status(404).json({ message: "Group not found" });
+
+        const actor = await getMemberRole(group.id, actorId);
+        if (!actor) return res.status(403).json({ message: "Not a member" });
+
+        if (!isSelfLeave && actor.role === "member") {
+            return res.status(403).json({ message: "Only admins can remove members" });
+        }
+
+        const result = await removeGroupMember(group.id, actorId, targetUserId, isSelfLeave);
+        if (!result) return res.status(404).json({ message: "Member not found in group" });
+
+        const io = req.app.get("io");
+        if (io) {
+            io.to(`group_${group.id}`).emit("new_group_message", result.systemMessage);
+            io.to(`user_${targetUserId}`).emit("removed_from_group", { group_id: group.id });
+        }
+
+        return res.status(200).json({
+            message: isSelfLeave ? "You left the group" : "Member removed from group"
+        });
+    } catch (err) {
+        console.error("removeOrLeaveGroup error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 8. PROMOTE / DEMOTE ADMIN (OWNER ONLY)
+const changeMemberRole = async (req, res) => {
+    try {
+        const actorId = Number(req.user.id);
+        const targetUserId = Number(req.params.userId);
+        const { role } = req.body; // 'admin' or 'member'
+
+        if (!["admin", "member"].includes(role)) {
+            return res.status(400).json({ message: "Role must be 'admin' or 'member'" });
+        }
+
+        const group = await getGroupDetails(req.params.groupId);
+        if (!group) return res.status(404).json({ message: "Group not found" });
+
+        const actor = await getMemberRole(group.id, actorId);
+        if (!actor || actor.role !== "owner") {
+            return res.status(403).json({ message: "Only group owner can promote/demote admins" });
+        }
+
+        const updated = await updateMemberRole(group.id, targetUserId, role);
+        if (!updated) return res.status(404).json({ message: "Member not found or cannot change owner role" });
+
+        const io = req.app.get("io");
+        if (io) {
+            io.to(`group_${group.id}`).emit("member_role_updated", {
+                group_id: group.id,
+                user_id: targetUserId,
+                role
+            });
+        }
+
+        return res.status(200).json({ message: `Member role updated to ${role}`, data: updated });
+    } catch (err) {
+        console.error("changeMemberRole error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 9. UPDATE GROUP INFO & PERMISSIONS
+const editGroupInfo = async (req, res) => {
+    try {
+        const actorId = Number(req.user.id);
+        const group = await getGroupDetails(req.params.groupId);
+        if (!group) return res.status(404).json({ message: "Group not found" });
+
+        const actor = await getMemberRole(group.id, actorId);
+        if (!actor) return res.status(403).json({ message: "Not a member" });
+
+        if (group.only_admins_can_edit_info && actor.role === "member") {
+            return res.status(403).json({ message: "Only admins can edit group info" });
+        }
+
+        let groupImageUrl = null;
+        const uploadedIcon = req.file || req.files?.media?.[0] || null;
+        if (uploadedIcon) {
+            const baseUrl = `${req.protocol}://${req.get("host")}`;
+            groupImageUrl = `${baseUrl}/uploads/chat/${uploadedIcon.filename}`;
+        }
+
+        const updated = await updateGroupSettings(group.id, {
+            name: req.body.name,
+            description: req.body.description,
+            group_image: groupImageUrl,
+            only_admins_can_send: req.body.only_admins_can_send,
+            only_admins_can_edit_info: req.body.only_admins_can_edit_info
+        });
+
+        const io = req.app.get("io");
+        if (io) io.to(`group_${group.id}`).emit("group_updated", updated);
+
+        return res.status(200).json({ message: "Group updated", group: updated });
+    } catch (err) {
+        console.error("editGroupInfo error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 10. JOIN VIA INVITE LINK
+const joinViaInvite = async (req, res) => {
+    try {
+        const group = await joinGroupByInviteCode(req.params.inviteCode, req.user.id);
+        if (!group) return res.status(404).json({ message: "Invalid invite link" });
+
+        const io = req.app.get("io");
+        if (io) io.to(`group_${group.id}`).emit("group_updated", group);
+
+        return res.status(200).json({ message: "Joined group successfully", group });
+    } catch (err) {
+        console.error("joinViaInvite error:", err.message);
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+
+// 11. MARK READ, REACT, EDIT, DELETE, PIN, SEARCH
+const markGroupMessagesRead = async (req, res) => {
+    try {
+        const readerId = Number(req.user.id);
+        const group = await getGroupDetails(req.params.groupId);
+        if (!group) return res.status(404).json({ message: "Group not found" });
+
+        const readIds = await markGroupRead(group.id, readerId);
+        const io = req.app.get("io");
+        if (io && readIds.length > 0) {
+            io.to(`group_${group.id}`).emit("group_messages_read", {
+                group_id: group.id,
+                reader_id: readerId,
+                read_message_ids: readIds
+            });
+        }
+        return res.status(200).json({ message: "Group messages marked read", read_message_ids: readIds });
+    } catch (err) {
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+const reactToGroupMessage = async (req, res) => {
+    try {
+        const updated = await toggleGroupReaction(req.params.messageId, req.user.id, req.body.emoji || null);
+        if (!updated) return res.status(404).json({ message: "Message not found" });
+
+        const io = req.app.get("io");
+        if (io) {
+            io.to(`group_${updated.group_id}`).emit("group_message_reacted", {
+                message_id: updated.id,
+                reactions: updated.reactions
+            });
+        }
+        return res.status(200).json({ message: "Reaction updated", data: updated });
+    } catch (err) {
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+const editGroupChatMessage = async (req, res) => {
+    try {
+        const { content } = req.body;
+        if (!content || content.trim() === "") return res.status(400).json({ message: "Content required" });
+
+        const updated = await editGroupMessage(req.params.messageId, req.user.id, content.trim());
+        if (!updated) return res.status(404).json({ message: "Message not found or unauthorized" });
+
+        const io = req.app.get("io");
+        if (io) io.to(`group_${updated.group_id}`).emit("group_message_edited", updated);
+
+        return res.status(200).json({ message: "Message edited", data: updated });
+    } catch (err) {
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+const removeGroupChatMessage = async (req, res) => {
+    try {
+        const userId = Number(req.user.id);
+        const forEveryone = req.query.forEveryone === "true" || req.body?.forEveryone === true;
+        const isAdminOrOwner = req.body?.isAdmin === true;
+
+        const deleted = await deleteGroupMessage(req.params.messageId, userId, isAdminOrOwner, forEveryone);
+        if (!deleted) return res.status(404).json({ message: "Message not found or unauthorized" });
+
+        const io = req.app.get("io");
+        if (io && forEveryone) {
+            io.to(`group_${deleted.group_id}`).emit("group_message_deleted", {
+                message_id: deleted.id,
+                group_id: deleted.group_id
+            });
+        }
+        return res.status(200).json({ message: "Message deleted", data: deleted });
+    } catch (err) {
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+const pinGroupChatMessage = async (req, res) => {
+    try {
+        const updated = await togglePinGroupMessage(req.params.messageId);
+        if (!updated) return res.status(404).json({ message: "Message not found" });
+
+        const io = req.app.get("io");
+        if (io) {
+            io.to(`group_${updated.group_id}`).emit("group_message_pinned", {
+                message_id: updated.id,
+                is_pinned: updated.is_pinned
+            });
+        }
+        return res.status(200).json({ message: updated.is_pinned ? "Pinned" : "Unpinned", data: updated });
+    } catch (err) {
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+const searchMessagesInGroup = async (req, res) => {
+    try {
+        const group = await getGroupDetails(req.params.groupId);
+        if (!group) return res.status(404).json({ message: "Group not found" });
+
+        const results = await searchGroupMessages(group.id, req.user.id, req.query.q?.trim() || "");
+        return res.status(200).json({ count: results.length, messages: results });
+    } catch (err) {
+        return res.status(500).json({ message: "Server error", error: err.message });
+    }
+};
+
+module.exports = {
+    createNewGroup,
+    viewMyGroups,
+    viewGroupInfo,
+    postGroupMessage,
+    viewGroupHistory,
+    addMembersToGroup,
+    removeOrLeaveGroup,
+    changeMemberRole,
+    editGroupInfo,
+    joinViaInvite,
+    markGroupMessagesRead,
+    reactToGroupMessage,
+    editGroupChatMessage,
+    removeGroupChatMessage,
+    pinGroupChatMessage,
+    searchMessagesInGroup
+};
+
+const express = require("express");
+const router = express.Router();
+
+const {
+    createNewGroup,
+    viewMyGroups,
+    viewGroupInfo,
+    postGroupMessage,
+    viewGroupHistory,
+    addMembersToGroup,
+    removeOrLeaveGroup,
+    changeMemberRole,
+    editGroupInfo,
+    joinViaInvite,
+    markGroupMessagesRead,
+    reactToGroupMessage,
+    editGroupChatMessage,
+    removeGroupChatMessage,
+    pinGroupChatMessage,
+    searchMessagesInGroup
+} = require("../../controller/chatController/groupChatController");
+
+const uploadChatMedia = require("../../middleware/uploadprivatechat");
+const { verifyToken } = require("../../middleware/jwtauthication");
+
+// Mounted at /api/groupchat
+router.post("/create", verifyToken, uploadChatMedia.single("group_image"), createNewGroup);
+router.get("/my-groups", verifyToken, viewMyGroups);
+router.post("/join/:inviteCode", verifyToken, joinViaInvite);
+
+// Group Info & Member Management
+router.get("/:groupId", verifyToken, viewGroupInfo);
+router.put("/:groupId/update", verifyToken, uploadChatMedia.single("media"), editGroupInfo);
+router.post("/:groupId/members", verifyToken, addMembersToGroup);
+router.delete("/:groupId/members/:userId", verifyToken, removeOrLeaveGroup);
+router.post("/:groupId/leave", verifyToken, removeOrLeaveGroup);
+router.put("/:groupId/members/:userId/role", verifyToken, changeMemberRole);
+
+// Group Messages (Text, Voice Notes, Media, Reactions, Edit, Pin, Delete, Search)
+router.post(
+    "/:groupId/send",
+    verifyToken,
+    uploadChatMedia.fields([
+        { name: "media", maxCount: 1 },
+        { name: "voice", maxCount: 1 }
+    ]),
+    postGroupMessage
+);
+router.get("/:groupId/messages", verifyToken, viewGroupHistory);
+router.put("/:groupId/read", verifyToken, markGroupMessagesRead);
+router.get("/:groupId/search", verifyToken, searchMessagesInGroup);
+
+router.put("/message/:messageId/react", verifyToken, reactToGroupMessage);
+router.put("/message/:messageId/edit", verifyToken, editGroupChatMessage);
+router.put("/message/:messageId/pin", verifyToken, pinGroupChatMessage);
+router.delete("/message/:messageId", verifyToken, removeGroupChatMessage);
+
+module.exports = router;
+
+const express = require("express");
+const router = express.Router();
+
+const {
+    createNewGroup,
+    viewMyGroups,
+    viewGroupInfo,
+    postGroupMessage,
+    viewGroupHistory,
+    addMembersToGroup,
+    removeOrLeaveGroup,
+    changeMemberRole,
+    editGroupInfo,
+    joinViaInvite,
+    markGroupMessagesRead,
+    reactToGroupMessage,
+    editGroupChatMessage,
+    removeGroupChatMessage,
+    pinGroupChatMessage,
+    searchMessagesInGroup
+} = require("../../controller/chatController/groupChatController");
+
+const uploadChatMedia = require("../../middleware/uploadprivatechat");
+const { verifyToken } = require("../../middleware/jwtauthication");
+
+// Mounted at /api/groupchat
+router.post("/create", verifyToken, uploadChatMedia.single("group_image"), createNewGroup);
+router.get("/my-groups", verifyToken, viewMyGroups);
+router.post("/join/:inviteCode", verifyToken, joinViaInvite);
+
+// Group Info & Member Management
+router.get("/:groupId", verifyToken, viewGroupInfo);
+router.put("/:groupId/update", verifyToken, uploadChatMedia.single("media"), editGroupInfo);
+router.post("/:groupId/members", verifyToken, addMembersToGroup);
+router.delete("/:groupId/members/:userId", verifyToken, removeOrLeaveGroup);
+router.post("/:groupId/leave", verifyToken, removeOrLeaveGroup);
+router.put("/:groupId/members/:userId/role", verifyToken, changeMemberRole);
+
+// Group Messages (Text, Voice Notes, Media, Reactions, Edit, Pin, Delete, Search)
+router.post(
+    "/:groupId/send",
+    verifyToken,
+    uploadChatMedia.fields([
+        { name: "media", maxCount: 1 },
+        { name: "voice", maxCount: 1 }
+    ]),
+    postGroupMessage
+);
+router.get("/:groupId/messages", verifyToken, viewGroupHistory);
+router.put("/:groupId/read", verifyToken, markGroupMessagesRead);
+router.get("/:groupId/search", verifyToken, searchMessagesInGroup);
+
+router.put("/message/:messageId/react", verifyToken, reactToGroupMessage);
+router.put("/message/:messageId/edit", verifyToken, editGroupChatMessage);
+router.put("/message/:messageId/pin", verifyToken, pinGroupChatMessage);
+router.delete("/message/:messageId", verifyToken, removeGroupChatMessage);
+
+module.exports = router;
+
+const crypto = require("crypto");
+const {
+    getOrCreateChat,
+    getChatById,
+    sendMessage,
+    markMessagesRead,
+    setUserOnlineStatus,
+    getUserOnlineStatus
+} = require("../module/chat/privateChatModule");
+
+const onlineUsers = new Map(); // userId -> Set of socketIds
+
+const generateChatUid = () => {
+    const year = new Date().getFullYear();
+    const randomDigits = crypto.randomInt(100000, 999999);
+    return `CHAT-${randomDigits}-${year}`;
+};
+
+const initChatSocket = (io) => {
+    io.on("connection", (socket) => {
+        console.log("Client connected:", socket.id);
+
+        // =====================================================
+        // 1. ONLINE STATUS & PRESENCE (SHARED FOR PRIVATE + GROUP)
+        // =====================================================
+        socket.on("user_online", async (userId) => {
+            try {
+                if (!userId) return;
+                const uid = String(userId);
+                socket.userId = uid;
+
+                const isFirstConnection = !onlineUsers.has(uid);
+                if (isFirstConnection) {
+                    onlineUsers.set(uid, new Set());
+                }
+                onlineUsers.get(uid).add(socket.id);
+                socket.join(`user_${uid}`);
+
+                if (isFirstConnection) {
+                    const statusRow = await setUserOnlineStatus(uid, true);
+                    io.emit("user_status_changed", {
+                        user_id: Number(uid),
+                        is_online: true,
+                        last_seen: statusRow?.last_seen || new Date().toISOString()
+                    });
+                }
+
+                io.emit("online_users", Array.from(onlineUsers.keys()));
+            } catch (err) {
+                console.error("Socket user_online error:", err.message);
+            }
+        });
+
+        socket.on("check_user_status", async (targetUserId, callback) => {
+            try {
+                if (!targetUserId) return;
+                const isCurrentlyConnected = onlineUsers.has(String(targetUserId));
+                const dbStatus = await getUserOnlineStatus(targetUserId);
+
+                const payload = {
+                    user_id: Number(targetUserId),
+                    is_online: isCurrentlyConnected || Boolean(dbStatus?.is_online),
+                    last_seen: dbStatus?.last_seen || null
+                };
+
+                if (callback) callback({ success: true, data: payload });
+            } catch (err) {
+                console.error("Socket check_user_status error:", err.message);
+                if (callback) callback({ success: false, message: err.message });
+            }
+        });
+
+        // =====================================================
+        // 2. PRIVATE 1-ON-1 CHAT EVENTS
+        // =====================================================
+        socket.on("join_chat", (chatId) => {
+            if (chatId) socket.join(`chat_${chatId}`);
+        });
+
+        socket.on("leave_chat", (chatId) => {
+            if (chatId) socket.leave(`chat_${chatId}`);
+        });
+
+        socket.on("send_message", async (payload, callback) => {
+            try {
+                const {
+                    chat_id,
+                    sender_id,
+                    receiver_id,
+                    message_type = "text",
+                    content = null,
+                    media_url = null,
+                    media_duration = null,
+                    waveform = [],
+                    reply_to_message_id = null
+                } = payload;
+
+                if (!sender_id || (!chat_id && !receiver_id)) {
+                    if (callback) callback({ success: false, message: "sender_id and chat_id/receiver_id required" });
+                    return;
+                }
+
+                let chat = chat_id ? await getChatById(chat_id) : null;
+                if (!chat && receiver_id) {
+                    chat = await getOrCreateChat(sender_id, receiver_id, generateChatUid());
+                }
+
+                if (!chat) {
+                    if (callback) callback({ success: false, message: "Chat room not found" });
+                    return;
+                }
+
+                const actualReceiverId =
+                    Number(chat.user1_id) === Number(sender_id)
+                        ? Number(chat.user2_id)
+                        : Number(chat.user1_id);
+
+                const savedMessage = await sendMessage({
+                    chat_id: chat.id,
+                    sender_id: Number(sender_id),
+                    receiver_id: actualReceiverId,
+                    message_type,
+                    content: content ? content.trim() : null,
+                    media_url,
+                    media_duration,
+                    waveform,
+                    reply_to_message_id
+                });
+
+                io.to(`chat_${chat.id}`).emit("new_message", savedMessage);
+                io.to(`user_${actualReceiverId}`).emit("inbox_updated", {
+                    chat_id: chat.id,
+                    chat_uid: chat.chat_uid,
+                    message: savedMessage
+                });
+
+                if (callback) callback({ success: true, data: savedMessage });
+            } catch (err) {
+                console.error("Socket send_message error:", err.message);
+                if (callback) callback({ success: false, message: err.message });
+            }
+        });
+
+        socket.on("typing", ({ chat_id, sender_id }) => {
+            if (chat_id) socket.to(`chat_${chat_id}`).emit("user_typing", { chat_id, sender_id });
+        });
+
+        socket.on("stop_typing", ({ chat_id, sender_id }) => {
+            if (chat_id) socket.to(`chat_${chat_id}`).emit("user_stop_typing", { chat_id, sender_id });
+        });
+
+        socket.on("recording_voice", ({ chat_id, sender_id }) => {
+            if (chat_id) socket.to(`chat_${chat_id}`).emit("user_recording_voice", { chat_id, sender_id });
+        });
+
+        socket.on("stop_recording_voice", ({ chat_id, sender_id }) => {
+            if (chat_id) socket.to(`chat_${chat_id}`).emit("user_stop_recording_voice", { chat_id, sender_id });
+        });
+
+        socket.on("mark_read", async ({ chat_id, reader_id }) => {
+            try {
+                if (!chat_id || !reader_id) return;
+                const updatedRows = await markMessagesRead(chat_id, reader_id);
+                const readMessageIds = updatedRows.map((row) => row.id);
+
+                if (readMessageIds.length > 0) {
+                    io.to(`chat_${chat_id}`).emit("messages_read", {
+                        chat_id: Number(chat_id),
+                        reader_id: Number(reader_id),
+                        read_message_ids: readMessageIds
+                    });
+                }
+            } catch (err) {
+                console.error("Socket mark_read error:", err.message);
+            }
+        });
+
+        // =====================================================
+        // 3. GROUP CHAT EVENTS
+        // =====================================================
+        socket.on("join_group", (groupId) => {
+            if (groupId) socket.join(`group_${groupId}`);
+        });
+
+        socket.on("leave_group", (groupId) => {
+            if (groupId) socket.leave(`group_${groupId}`);
+        });
+
+        socket.on("group_typing", ({ group_id, sender_id, sender_name }) => {
+            if (group_id) socket.to(`group_${group_id}`).emit("group_user_typing", { group_id, sender_id, sender_name });
+        });
+
+        socket.on("group_stop_typing", ({ group_id, sender_id }) => {
+            if (group_id) socket.to(`group_${group_id}`).emit("group_user_stop_typing", { group_id, sender_id });
+        });
+
+        socket.on("group_recording_voice", ({ group_id, sender_id, sender_name }) => {
+            if (group_id) socket.to(`group_${group_id}`).emit("group_user_recording_voice", { group_id, sender_id, sender_name });
+        });
+
+        socket.on("group_stop_recording_voice", ({ group_id, sender_id }) => {
+            if (group_id) socket.to(`group_${group_id}`).emit("group_user_stop_recording_voice", { group_id, sender_id });
+        });
+
+        // =====================================================
+        // 4. DISCONNECT CLEANUP
+        // =====================================================
+        socket.on("disconnect", async () => {
+            try {
+                if (socket.userId && onlineUsers.has(socket.userId)) {
+                    const uid = socket.userId;
+                    const userSockets = onlineUsers.get(uid);
+                    userSockets.delete(socket.id);
+
+                    if (userSockets.size === 0) {
+                        onlineUsers.delete(uid);
+                        const statusRow = await setUserOnlineStatus(uid, false);
+
+                        io.emit("user_status_changed", {
+                            user_id: Number(uid),
+                            is_online: false,
+                            last_seen: statusRow?.last_seen || new Date().toISOString()
+                        });
+                    }
+                }
+                io.emit("online_users", Array.from(onlineUsers.keys()));
+                console.log("Client disconnected:", socket.id);
+            } catch (err) {
+                console.error("Socket disconnect error:", err.message);
+            }
+        });
+    });
+};
+
+module.exports = initChatSocket;
