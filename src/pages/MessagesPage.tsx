@@ -27,6 +27,12 @@ import {
   Pause,
   Radio,
   MessageSquare,
+  Users,
+  Shield,
+  Crown,
+  LogOut,
+  Copy,
+  Info,
 } from 'lucide-react'
 import {
   viewAllUsers,
@@ -53,6 +59,17 @@ import {
   reactToChatMessage,
   removeChatMessage,
   pinChatMessage,
+  createGroupChat,
+  viewMyGroups,
+  viewGroupInfo,
+  sendGroupMessage,
+  viewGroupHistory,
+  markGroupMessagesRead,
+  reactToGroupMessage,
+  editGroupMessage,
+  pinGroupMessage,
+  removeGroupMessage,
+  leaveGroup,
 } from '../services/api'
 import {
   getChatSocket,
@@ -66,6 +83,12 @@ import {
   emitStopRecordingVoice,
   isUserOnline,
   subscribeToOnlineUsers,
+  joinGroupRoom,
+  leaveGroupRoom,
+  emitGroupTyping,
+  emitGroupStopTyping,
+  emitGroupRecordingVoice,
+  emitGroupStopRecordingVoice,
 } from '../services/chatSocket'
 import { FlagEG, FlagSA } from '../components/common/SvgIcons'
 
@@ -86,7 +109,13 @@ interface ChatThread {
   chatId?: number
   chatUid?: string
   userId?: number
+  groupId?: number
+  groupUid?: string
+  inviteCode?: string
+  memberCount?: number
+  role?: string
   name: string
+  description?: string
   avatarInitial?: string
   avatarImage?: string | null
   avatarBg?: string
@@ -103,9 +132,10 @@ interface ChatThread {
 
 interface BackendMessage {
   id: number
-  chat_id: number
+  chat_id?: number
+  group_id?: number
   sender_id: number
-  receiver_id: number
+  receiver_id?: number
   message_type: string
   content: string | null
   media_url?: string | null
@@ -236,6 +266,13 @@ export const MessagesPage: React.FC = () => {
   const [deleteModalMsg, setDeleteModalMsg] = useState<BackendMessage | null>(null)
   const [friendIds, setFriendIds] = useState<Set<number>>(new Set())
 
+  // Group Chat States (07_files)
+  const [isGroupInfoOpen, setIsGroupInfoOpen] = useState(false)
+  const [groupDetails, setGroupDetails] = useState<any | null>(null)
+  const [groupTypingUser, setGroupTypingUser] = useState<string | null>(null)
+  const [groupRecordingUser, setGroupRecordingUser] = useState<string | null>(null)
+  const [groupNameInput, setGroupNameInput] = useState('')
+
   // Filtered friends list (ONLY users who are accepted connections / friends, excluding removed)
   const currentUid = getStoredAuth()?.unique_id || getStoredAuth()?.user?.user_uid
   const friendsList = useMemo(() => {
@@ -355,6 +392,27 @@ export const MessagesPage: React.FC = () => {
     }
   }
 
+  // Leave active group chat (07_files leaveGroup)
+  const handleLeaveActiveGroup = async () => {
+    if (!activeChat?.groupId) return
+    let token = getAuthToken()
+    if (!token) token = await ensureActiveAuthToken()
+    if (!token) return
+
+    try {
+      showToast('Leaving group...')
+      await leaveGroup(activeChat.groupId, token)
+      leaveGroupRoom(activeChat.groupId)
+      setThreads((prev) => prev.filter((t) => t.groupId !== activeChat.groupId))
+      setActiveChat(null)
+      setIsChatMenuOpen(false)
+      setIsGroupInfoOpen(false)
+      showToast('Left group')
+    } catch (err: any) {
+      showToast(err.message || 'Failed to leave group')
+    }
+  }
+
   // Socket.IO Global Registration & Real-time Inbox Updates
   useEffect(() => {
     const currentUserId = getStoredAuth()?.user?.id
@@ -385,10 +443,33 @@ export const MessagesPage: React.FC = () => {
       }
     }
 
+    const handleGroupInboxUpdated = (payload: any) => {
+      if (!payload?.group_id) return
+      const { group_id, message } = payload
+      if (message) {
+        setThreads((prev) => {
+          const idx = prev.findIndex((t) => t.groupId === group_id)
+          if (idx !== -1) {
+            const updated = [...prev]
+            updated[idx] = {
+              ...updated[idx],
+              lastMessage: message.content || (message.message_type === 'voice' ? '🎙️ Voice note' : '📎 Attachment'),
+              timestamp: 'Now',
+              unreadCount: (updated[idx].unreadCount || 0) + 1,
+            }
+            return updated
+          }
+          return prev
+        })
+      }
+    }
+
     socket.on('inbox_updated', handleInboxUpdated)
+    socket.on('group_inbox_updated', handleGroupInboxUpdated)
 
     return () => {
       socket.off('inbox_updated', handleInboxUpdated)
+      socket.off('group_inbox_updated', handleGroupInboxUpdated)
     }
   }, [])
 
@@ -526,6 +607,116 @@ export const MessagesPage: React.FC = () => {
     }
   }, [activeChat?.chatId, activeChat?.isSystem])
 
+  // Group Chat Socket Handlers (from 07_files)
+  useEffect(() => {
+    const activeGroupId = activeChat?.groupId
+    if (!activeGroupId || !activeChat?.isGroup) return
+
+    joinGroupRoom(activeGroupId)
+    const currentUserId = getStoredAuth()?.user?.id
+    const socket = getChatSocket()
+
+    const handleNewGroupMessage = (newMsg: BackendMessage) => {
+      if (Number(newMsg.group_id) === Number(activeGroupId)) {
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === newMsg.id)) return prev
+          return [...prev, newMsg]
+        })
+      }
+    }
+
+    const handleGroupUserTyping = (data: { group_id: number; user_id: number; user_name?: string }) => {
+      if (Number(data.group_id) === Number(activeGroupId) && currentUserId && Number(data.user_id) !== Number(currentUserId)) {
+        setGroupTypingUser(data.user_name || 'Someone')
+      }
+    }
+
+    const handleGroupUserStopTyping = (data: { group_id: number; user_id: number }) => {
+      if (Number(data.group_id) === Number(activeGroupId)) {
+        setGroupTypingUser(null)
+      }
+    }
+
+    const handleGroupRecordingVoice = (data: { group_id: number; user_id: number; user_name?: string }) => {
+      if (Number(data.group_id) === Number(activeGroupId) && currentUserId && Number(data.user_id) !== Number(currentUserId)) {
+        setGroupRecordingUser(data.user_name || 'Someone')
+      }
+    }
+
+    const handleGroupStopRecordingVoice = (data: { group_id: number; user_id: number }) => {
+      if (Number(data.group_id) === Number(activeGroupId)) {
+        setGroupRecordingUser(null)
+      }
+    }
+
+    const handleGroupMessageReacted = (data: { message_id: number; reactions: Record<string, string> }) => {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === data.message_id ? { ...m, reactions: data.reactions } : m))
+      )
+    }
+
+    const handleGroupMessageEdited = (updatedMsg: BackendMessage) => {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === updatedMsg.id ? { ...m, ...updatedMsg } : m))
+      )
+    }
+
+    const handleGroupMessageDeleted = (data: { message_id: number }) => {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === data.message_id
+            ? { ...m, content: 'This message was deleted', is_deleted_for_everyone: true }
+            : m
+        )
+      )
+    }
+
+    const handleGroupMessagePinned = (data: { message_id: number; is_pinned: boolean }) => {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === data.message_id ? { ...m, is_pinned: data.is_pinned } : m))
+      )
+    }
+
+    socket.on('new_group_message', handleNewGroupMessage)
+    socket.on('group_user_typing', handleGroupUserTyping)
+    socket.on('group_user_stop_typing', handleGroupUserStopTyping)
+    socket.on('group_user_recording_voice', handleGroupRecordingVoice)
+    socket.on('group_user_stop_recording_voice', handleGroupStopRecordingVoice)
+    socket.on('group_message_reacted', handleGroupMessageReacted)
+    socket.on('group_message_edited', handleGroupMessageEdited)
+    socket.on('group_message_deleted', handleGroupMessageDeleted)
+    socket.on('group_message_pinned', handleGroupMessagePinned)
+
+    return () => {
+      leaveGroupRoom(activeGroupId)
+      setGroupTypingUser(null)
+      setGroupRecordingUser(null)
+      socket.off('new_group_message', handleNewGroupMessage)
+      socket.off('group_user_typing', handleGroupUserTyping)
+      socket.off('group_user_stop_typing', handleGroupUserStopTyping)
+      socket.off('group_user_recording_voice', handleGroupRecordingVoice)
+      socket.off('group_user_stop_recording_voice', handleGroupStopRecordingVoice)
+      socket.off('group_message_reacted', handleGroupMessageReacted)
+      socket.off('group_message_edited', handleGroupMessageEdited)
+      socket.off('group_message_deleted', handleGroupMessageDeleted)
+      socket.off('group_message_pinned', handleGroupMessagePinned)
+    }
+  }, [activeChat?.groupId, activeChat?.isGroup])
+
+  // Fetch group details when Group Info Modal is opened
+  useEffect(() => {
+    if (isGroupInfoOpen && activeChat?.groupId && activeChat.isGroup) {
+      const token = getAuthToken()
+      if (token) {
+        viewGroupInfo(activeChat.groupId, token)
+          .then((res) => {
+            if (res) setGroupDetails(res)
+          })
+          .catch(() => {})
+      }
+    }
+  }, [isGroupInfoOpen, activeChat?.groupId, activeChat?.isGroup])
+
   // Sync recipient's live online & last seen status from 05_files endpoint
   useEffect(() => {
     if (!activeChat?.userId || activeChat.isSystem) {
@@ -565,8 +756,9 @@ export const MessagesPage: React.FC = () => {
         viewPendingFollowRequests(token).catch(() => ({ requests: [] })),
         viewFollowing(token).catch(() => ({ following: [] })),
         viewFollowers(token).catch(() => ({ followers: [] })),
+        viewMyGroups(token).catch(() => ({ groups: [] })),
       ])
-        .then(([inboxRes, usersRes, requestsRes, followingRes, followersRes]) => {
+        .then(([inboxRes, usersRes, requestsRes, followingRes, followersRes, groupsRes]) => {
           const usersList: RealUser[] = usersRes?.users || []
           setAllDbUsers(usersList)
 
@@ -618,7 +810,36 @@ export const MessagesPage: React.FC = () => {
 
           const existingThreadUserIds = new Set<number>()
 
-          // 1. Active chats from inbox
+          // 1. Group chats from backend 07_files
+          const groupThreads: ChatThread[] = (groupsRes?.groups || []).map((g: any) => {
+            if (g.id) joinGroupRoom(g.id)
+            return {
+              id: `group-${g.id}`,
+              groupId: g.id,
+              groupUid: g.group_uid,
+              name: g.name,
+              description: g.description,
+              avatarImage: normalizeImageUrl(g.group_image),
+              avatarInitial: g.name ? g.name.charAt(0).toUpperCase() : 'G',
+              avatarBg: 'bg-gradient-to-tr from-emerald-600 to-teal-700',
+              badgeText: `${g.member_count || 1} Members`,
+              badgeBg: 'bg-emerald-100 text-emerald-800',
+              lastMessage: g.last_message || 'Tap to chat with group',
+              timestamp: g.last_message_at
+                ? new Date(g.last_message_at).toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })
+                : 'Group',
+              unreadCount: g.unread_count || 0,
+              isGroup: true,
+              memberCount: g.member_count,
+              role: g.role,
+              inviteCode: g.invite_code,
+            }
+          })
+
+          // 2. Active direct chats from inbox
           const acceptedInboxThreads: ChatThread[] = inboxChats
             .filter((c: any) => !pendingSenderIds.has(Number(c.player_id)))
             .map((c: any) => {
@@ -643,7 +864,7 @@ export const MessagesPage: React.FC = () => {
               }
             })
 
-          // 2. Include any accepted friends who do not yet have an inbox chat row
+          // 3. Include any accepted friends who do not yet have an inbox chat row
           const myId = getStoredAuth()?.user?.id
           friendsMap.forEach((friend, friendId) => {
             if (
@@ -666,8 +887,8 @@ export const MessagesPage: React.FC = () => {
             }
           })
 
-          // Set only actual active accepted conversations in the main message hub
-          setThreads(acceptedInboxThreads)
+          // Set groups and direct chats in the main message hub
+          setThreads([...groupThreads, ...acceptedInboxThreads])
         })
         .catch((err) => {
           console.debug('Failed to fetch message contacts:', err.message)
@@ -685,11 +906,12 @@ export const MessagesPage: React.FC = () => {
       if (!token) return
 
       try {
-        const [inboxRes, requestsRes, followingRes, followersRes] = await Promise.all([
+        const [inboxRes, requestsRes, followingRes, followersRes, groupsRes] = await Promise.all([
           viewInbox(token).catch(() => ({ chats: [] })),
           viewPendingFollowRequests(token).catch(() => ({ requests: [] })),
           viewFollowing(token).catch(() => ({ following: [] })),
           viewFollowers(token).catch(() => ({ followers: [] })),
+          viewMyGroups(token).catch(() => ({ groups: [] })),
         ])
 
         const pendingList: PendingRequest[] = requestsRes?.requests || []
@@ -720,6 +942,36 @@ export const MessagesPage: React.FC = () => {
 
         const existingThreadUserIds = new Set<number>()
 
+        // 1. Group chats from backend 07_files
+        const groupThreads: ChatThread[] = (groupsRes?.groups || []).map((g: any) => {
+          if (g.id) joinGroupRoom(g.id)
+          return {
+            id: `group-${g.id}`,
+            groupId: g.id,
+            groupUid: g.group_uid,
+            name: g.name,
+            description: g.description,
+            avatarImage: normalizeImageUrl(g.group_image),
+            avatarInitial: g.name ? g.name.charAt(0).toUpperCase() : 'G',
+            avatarBg: 'bg-gradient-to-tr from-emerald-600 to-teal-700',
+            badgeText: `${g.member_count || 1} Members`,
+            badgeBg: 'bg-emerald-100 text-emerald-800',
+            lastMessage: g.last_message || 'Tap to chat with group',
+            timestamp: g.last_message_at
+              ? new Date(g.last_message_at).toLocaleTimeString([], {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })
+              : 'Group',
+            unreadCount: g.unread_count || 0,
+            isGroup: true,
+            memberCount: g.member_count,
+            role: g.role,
+            inviteCode: g.invite_code,
+          }
+        })
+
+        // 2. Active direct chats from inbox
         const acceptedInboxThreads: ChatThread[] = inboxChats
           .filter((c: any) => !pendingSenderIds.has(Number(c.player_id)))
           .map((c: any) => {
@@ -766,7 +1018,7 @@ export const MessagesPage: React.FC = () => {
           }
         })
 
-        setThreads(acceptedInboxThreads)
+        setThreads([...groupThreads, ...acceptedInboxThreads])
       } catch {
         // Silent periodic background sync
       }
@@ -789,16 +1041,26 @@ export const MessagesPage: React.FC = () => {
 
   // Auto-sync active conversation messages in real time
   useEffect(() => {
-    if (!activeChat?.chatId || activeChat.isSystem) return
+    if (!activeChat || activeChat.isSystem) return
     const activeChatId = activeChat.chatId
+    const activeGroupId = activeChat.groupId
+
+    if (!activeChatId && !activeGroupId) return
 
     const msgInterval = setInterval(async () => {
       const token = getAuthToken()
       if (!token) return
       try {
-        const historyRes = await viewChatHistory(activeChatId, token)
-        if (historyRes?.messages && Array.isArray(historyRes.messages)) {
-          setMessages(filterDeletedMessages(historyRes.messages))
+        if (activeChat.isGroup && activeGroupId) {
+          const historyRes = await viewGroupHistory(activeGroupId, token)
+          if (historyRes?.messages && Array.isArray(historyRes.messages)) {
+            setMessages(filterDeletedMessages(historyRes.messages))
+          }
+        } else if (activeChatId) {
+          const historyRes = await viewChatHistory(activeChatId, token)
+          if (historyRes?.messages && Array.isArray(historyRes.messages)) {
+            setMessages(filterDeletedMessages(historyRes.messages))
+          }
         }
       } catch {
         // Silent poll
@@ -806,7 +1068,7 @@ export const MessagesPage: React.FC = () => {
     }, 3500)
 
     return () => clearInterval(msgInterval)
-  }, [activeChat?.chatId, activeChat?.isSystem])
+  }, [activeChat?.chatId, activeChat?.groupId, activeChat?.isGroup, activeChat?.isSystem])
 
   const fetchPendingRequests = async (token: string) => {
     try {
@@ -912,32 +1174,72 @@ export const MessagesPage: React.FC = () => {
     )
   }
 
-  // Done button handler in Choose Friends Picker
-  const handleConfirmChooseFriends = () => {
+  // Done button handler in Choose Friends Picker (real backend groups from 07_files)
+  const handleConfirmChooseFriends = async () => {
     if (selectedFriendIds.length === 0) return
 
     const selectedUsers = friendsList.filter((u) => selectedFriendIds.includes(u.id))
     if (selectedUsers.length === 1) {
       const u = selectedUsers[0]
       handleStartChatWithFriend(u)
-    } else {
-      const groupName = selectedUsers.map((u) => u.name).join(', ')
-      const newGroupThread: ChatThread = {
-        id: `group-${Date.now()}`,
-        name: groupName,
-        badgeText: 'Tribe Group',
-        badgeBg: 'bg-[#e0f2fe] text-[#0284c7]',
-        lastMessage: 'Group conversation created',
-        timestamp: 'Just now',
-        isGroup: true,
+      setIsChooseFriendsOpen(false)
+      setSelectedFriendIds([])
+      setGroupNameInput('')
+      return
+    }
+
+    let token = getAuthToken()
+    if (!token) token = await ensureActiveAuthToken()
+    if (!token) return
+
+    const fallbackName = `${selectedUsers.map((u) => u.name).slice(0, 3).join(', ')}${selectedUsers.length > 3 ? '...' : ''}`
+    const finalGroupName = groupNameInput.trim() || fallbackName || 'Group Chat'
+
+    try {
+      showToast('Creating group chat...')
+      const res = await createGroupChat(
+        {
+          name: finalGroupName,
+          member_ids: selectedFriendIds,
+        },
+        token
+      )
+
+      if (res?.group) {
+        const g = res.group
+        if (g.id) joinGroupRoom(g.id)
+        const newGroupThread: ChatThread = {
+          id: `group-${g.id}`,
+          groupId: g.id,
+          groupUid: g.group_uid,
+          name: g.name,
+          description: g.description,
+          avatarImage: normalizeImageUrl(g.group_image),
+          avatarInitial: g.name ? g.name.charAt(0).toUpperCase() : 'G',
+          avatarBg: 'bg-gradient-to-tr from-emerald-600 to-teal-700',
+          badgeText: `${selectedFriendIds.length + 1} Members`,
+          badgeBg: 'bg-emerald-100 text-emerald-800',
+          lastMessage: 'Group conversation created',
+          timestamp: 'Just now',
+          unreadCount: 0,
+          isGroup: true,
+          memberCount: selectedFriendIds.length + 1,
+          role: 'owner',
+          inviteCode: g.invite_code,
+        }
+        setThreads((prev) => [newGroupThread, ...prev])
+        setActiveChat(newGroupThread)
+        setMessages([])
+        showToast('Group created! 🎉')
       }
-      setThreads((prev) => [newGroupThread, ...prev])
-      setActiveChat(newGroupThread)
-      setMessages([])
+    } catch (err: any) {
+      console.warn('Group creation failed:', err.message)
+      showToast(err.message || 'Failed to create group')
     }
 
     setIsChooseFriendsOpen(false)
     setSelectedFriendIds([])
+    setGroupNameInput('')
   }
 
   // 1. Permanent Friend & Follow Requests Channel (dynamically synced to live requests)
@@ -1064,6 +1366,25 @@ export const MessagesPage: React.FC = () => {
       return
     }
 
+    // 3. Intercept Group Chats (from 07_files)
+    if (thread.isGroup && thread.groupId) {
+      setActiveChat(thread)
+      setMessages([])
+      joinGroupRoom(thread.groupId)
+      if (token) {
+        try {
+          const historyRes = await viewGroupHistory(thread.groupId, token)
+          if (historyRes?.messages && Array.isArray(historyRes.messages)) {
+            setMessages(filterDeletedMessages(historyRes.messages))
+          }
+          markGroupMessagesRead(thread.groupId, token).catch(() => {})
+        } catch (err: any) {
+          console.debug('Failed to fetch group history:', err.message)
+        }
+      }
+      return
+    }
+
     setActiveChat(thread)
     setMessages([])
 
@@ -1107,25 +1428,51 @@ export const MessagesPage: React.FC = () => {
   // Input Change with Real-time Typing Indicator
   const handleInputChange = (text: string) => {
     setChatInput(text)
+    const currentUserId = getStoredAuth()?.user?.id
+    if (!currentUserId) return
+
+    if (activeChat?.isGroup && activeChat.groupId) {
+      emitGroupTyping(activeChat.groupId, currentUserId)
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
+      typingTimeoutRef.current = setTimeout(() => {
+        if (activeChat?.groupId) {
+          emitGroupStopTyping(activeChat.groupId, currentUserId)
+        }
+      }, 1800)
+      return
+    }
+
     if (activeChat?.chatId) {
-      const currentUserId = getStoredAuth()?.user?.id
-      if (currentUserId) {
-        emitTyping(activeChat.chatId, currentUserId)
-        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
-        typingTimeoutRef.current = setTimeout(() => {
-          if (activeChat?.chatId) {
-            emitStopTyping(activeChat.chatId, currentUserId)
-          }
-        }, 2000)
-      }
+      emitTyping(activeChat.chatId, currentUserId)
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
+      typingTimeoutRef.current = setTimeout(() => {
+        if (activeChat?.chatId) {
+          emitStopTyping(activeChat.chatId, currentUserId)
+        }
+      }, 2000)
     }
   }
 
-  // React to a Message with Emoji (04_files reactToMessage)
+  // React to a Message with Emoji (04_files & 07_files)
   const handleReactToMessage = async (messageId: number, emoji: string) => {
     let token = getAuthToken()
     if (!token) token = await ensureActiveAuthToken()
     if (!token) return
+
+    if (activeChat?.isGroup && activeChat.groupId) {
+      try {
+        const res = await reactToGroupMessage(messageId, emoji, token)
+        if (res?.data) {
+          setMessages((prev) =>
+            prev.map((m) => (m.id === messageId ? { ...m, reactions: res.data.reactions } : m))
+          )
+        }
+        setActiveMessageActionId(null)
+      } catch {
+        showToast('Could not update reaction')
+      }
+      return
+    }
 
     try {
       const res = await reactToChatMessage(messageId, emoji, token)
@@ -1140,11 +1487,27 @@ export const MessagesPage: React.FC = () => {
     }
   }
 
-  // Pin / Unpin Message (04_files pinChatMessage)
+  // Pin / Unpin Message (04_files & 07_files)
   const handleTogglePin = async (messageId: number) => {
     let token = getAuthToken()
     if (!token) token = await ensureActiveAuthToken()
     if (!token) return
+
+    if (activeChat?.isGroup && activeChat.groupId) {
+      try {
+        const res = await pinGroupMessage(messageId, token)
+        if (res?.data) {
+          setMessages((prev) =>
+            prev.map((m) => (m.id === messageId ? { ...m, is_pinned: res.data.is_pinned } : m))
+          )
+          showToast(res.data.is_pinned ? 'Message pinned 📌' : 'Message unpinned')
+        }
+        setActiveMessageActionId(null)
+      } catch {
+        showToast('Could not pin message')
+      }
+      return
+    }
 
     try {
       const res = await pinChatMessage(messageId, token)
@@ -1160,12 +1523,38 @@ export const MessagesPage: React.FC = () => {
     }
   }
 
-  // Delete Message for Me or Everyone (04_files removeChatMessage)
+  // Delete Message for Me or Everyone (04_files & 07_files)
   const handleDeleteMessage = async (messageId: number, forEveryone: boolean) => {
     let token = getAuthToken()
     if (!token) token = await ensureActiveAuthToken()
 
     const mid = Number(messageId)
+
+    if (activeChat?.isGroup && activeChat.groupId) {
+      if (forEveryone) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            Number(m.id) === mid
+              ? { ...m, content: 'This message was deleted', media_url: null, is_deleted_for_everyone: true }
+              : m
+          )
+        )
+        showToast('Message deleted for everyone')
+      } else {
+        setMessages((prev) => prev.filter((m) => Number(m.id) !== mid))
+        showToast('Message deleted for you')
+      }
+      setActiveMessageActionId(null)
+      setDeleteModalMsg(null)
+      if (token) {
+        try {
+          await removeGroupMessage(mid, forEveryone, token)
+        } catch (err: any) {
+          console.warn('Backend group delete returned:', err)
+        }
+      }
+      return
+    }
 
     // 1. Immediately update local state so user sees instant response
     if (forEveryone) {
@@ -1232,6 +1621,32 @@ export const MessagesPage: React.FC = () => {
 
     const currentUserId = getStoredAuth()?.user?.id || 1
 
+    if (activeChat.isGroup && activeChat.groupId) {
+      emitGroupStopTyping(activeChat.groupId, currentUserId)
+      if (token) {
+        try {
+          const res = await sendGroupMessage(activeChat.groupId, { message_type: 'text', content }, token)
+          if (res?.data) {
+            setMessages((prev) => {
+              if (prev.some((m) => m.id === res.data.id)) return prev
+              return [...prev, res.data]
+            })
+            setThreads((prev) =>
+              prev.map((t) =>
+                t.groupId === activeChat.groupId
+                  ? { ...t, lastMessage: content, timestamp: 'Now' }
+                  : t
+              )
+            )
+            return
+          }
+        } catch (err: any) {
+          showToast(err.message || 'Delivery error')
+          return
+        }
+      }
+    }
+
     if (activeChat.chatId) {
       emitStopTyping(activeChat.chatId, currentUserId)
     }
@@ -1283,6 +1698,7 @@ export const MessagesPage: React.FC = () => {
     const localMsg: BackendMessage = {
       id: Date.now(),
       chat_id: activeChat.chatId || 0,
+      group_id: activeChat.groupId || 0,
       sender_id: currentUserId,
       receiver_id: activeChat.userId || 0,
       message_type: 'text',
@@ -1293,7 +1709,7 @@ export const MessagesPage: React.FC = () => {
     setMessages((prev) => [...prev, localMsg])
   }
 
-  // Real Voice Note Recording (from 05_files MediaRecorder API)
+  // Real Voice Note Recording (from 05_files & 07_files MediaRecorder API)
   const startVoiceRecording = async () => {
     try {
       if (!navigator?.mediaDevices?.getUserMedia) {
@@ -1303,7 +1719,6 @@ export const MessagesPage: React.FC = () => {
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
 
-      // Determine optimal browser-supported audio mimeType
       let chosenMimeType = ''
       if (typeof MediaRecorder !== 'undefined') {
         if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
@@ -1328,14 +1743,17 @@ export const MessagesPage: React.FC = () => {
         if (e.data && e.data.size > 0) audioChunksRef.current.push(e.data)
       }
 
-      // Start with 100ms timeslice to ensure continuous chunk buffering
       mediaRecorder.start(100)
       setIsRecordingVoice(true)
       setRecordingDuration(0)
 
       const currentUserId = getStoredAuth()?.user?.id
-      if (activeChat?.chatId && currentUserId) {
-        emitRecordingVoice(activeChat.chatId, currentUserId)
+      if (currentUserId) {
+        if (activeChat?.isGroup && activeChat.groupId) {
+          emitGroupRecordingVoice(activeChat.groupId, currentUserId)
+        } else if (activeChat?.chatId) {
+          emitRecordingVoice(activeChat.chatId, currentUserId)
+        }
       }
 
       recordingTimerRef.current = setInterval(() => {
@@ -1357,11 +1775,14 @@ export const MessagesPage: React.FC = () => {
     }
 
     const currentUserId = getStoredAuth()?.user?.id
-    if (activeChat?.chatId && currentUserId) {
-      emitStopRecordingVoice(activeChat.chatId, currentUserId)
+    if (currentUserId) {
+      if (activeChat?.isGroup && activeChat.groupId) {
+        emitGroupStopRecordingVoice(activeChat.groupId, currentUserId)
+      } else if (activeChat?.chatId) {
+        emitStopRecordingVoice(activeChat.chatId, currentUserId)
+      }
     }
 
-    // Flush any pending data before stopping
     if (recorder.state === 'recording') {
       try {
         recorder.requestData()
@@ -1381,8 +1802,40 @@ export const MessagesPage: React.FC = () => {
 
       let token = getAuthToken()
       if (!token) token = await ensureActiveAuthToken()
-      let chatId = activeChat?.chatId
 
+      const ext = actualMime.includes('mp4') ? 'm4a' : actualMime.includes('ogg') ? 'ogg' : 'webm'
+      const voiceFileName = `voice_${Date.now()}.${ext}`
+
+      const fd = new FormData()
+      fd.append('voice', audioBlob, voiceFileName)
+      fd.append('message_type', 'voice')
+      fd.append('media_duration', String(recordingDuration || 1))
+      fd.append('waveform', JSON.stringify([25, 50, 85, 60, 35, 95, 75, 45, 65, 35, 90, 45]))
+
+      // Send to Group Chat
+      if (activeChat?.isGroup && activeChat.groupId && token) {
+        try {
+          showToast('Sending group voice snap...')
+          const res = await sendGroupMessage(activeChat.groupId, fd, token)
+          if (res?.data) {
+            setMessages((prev) => {
+              if (prev.some((m) => m.id === res.data.id)) return prev
+              return [...prev, res.data]
+            })
+            setThreads((prev) =>
+              prev.map((t) =>
+                t.groupId === activeChat.groupId ? { ...t, lastMessage: '🎙️ Voice Note', timestamp: 'Now' } : t
+              )
+            )
+          }
+        } catch {
+          showToast('Voice note failed to send')
+        }
+        return
+      }
+
+      // Send to Direct Chat
+      let chatId = activeChat?.chatId
       if (!chatId && activeChat?.userId && token) {
         const res = await startOrGetChat(activeChat.userId, token)
         chatId = res?.chat?.id
@@ -1390,16 +1843,6 @@ export const MessagesPage: React.FC = () => {
       }
 
       if (chatId && token) {
-        const ext = actualMime.includes('mp4') ? 'm4a' : actualMime.includes('ogg') ? 'ogg' : 'webm'
-        const voiceFileName = `voice_${Date.now()}.${ext}`
-
-        const fd = new FormData()
-        // Provide under 'voice' matching backend 06_files uploadChatMedia.single("voice") and uploadChatMedia.fields([{ name: "voice" }])
-        fd.append('voice', audioBlob, voiceFileName)
-        fd.append('message_type', 'voice')
-        fd.append('media_duration', String(recordingDuration || 1))
-        fd.append('waveform', JSON.stringify([25, 50, 85, 60, 35, 95, 75, 45, 65, 35, 90, 45]))
-
         try {
           showToast('Sending voice snap...')
           const res = await sendVoiceNote(chatId, fd, token).catch(() =>
@@ -1435,8 +1878,12 @@ export const MessagesPage: React.FC = () => {
       recordingTimerRef.current = null
     }
     const currentUserId = getStoredAuth()?.user?.id
-    if (activeChat?.chatId && currentUserId) {
-      emitStopRecordingVoice(activeChat.chatId, currentUserId)
+    if (currentUserId) {
+      if (activeChat?.isGroup && activeChat.groupId) {
+        emitGroupStopRecordingVoice(activeChat.groupId, currentUserId)
+      } else if (activeChat?.chatId) {
+        emitStopRecordingVoice(activeChat.chatId, currentUserId)
+      }
     }
     setIsRecordingVoice(false)
     setRecordingDuration(0)
@@ -1512,23 +1959,42 @@ export const MessagesPage: React.FC = () => {
     }
   }
 
-  // Media Attachment Upload
+  // Media Attachment Upload (06_files & 07_files)
   const handleMediaFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file || !activeChat) return
 
     let token = getAuthToken()
     if (!token) token = await ensureActiveAuthToken()
+    if (!token) return
+
+    const fd = new FormData()
+    fd.append('media', file)
+    fd.append(
+      'message_type',
+      file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : 'file'
+    )
+
+    // Group media attachment
+    if (activeChat.isGroup && activeChat.groupId) {
+      try {
+        showToast('Uploading group media snap...')
+        const res = await sendGroupMessage(activeChat.groupId, fd, token)
+        if (res?.data) {
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === res.data.id)) return prev
+            return [...prev, res.data]
+          })
+        }
+      } catch {
+        showToast('Failed to upload media')
+      }
+      return
+    }
+
+    // Direct chat media attachment
     let chatId = activeChat.chatId
-
-    if (chatId && token) {
-      const fd = new FormData()
-      fd.append('media', file)
-      fd.append(
-        'message_type',
-        file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : 'file'
-      )
-
+    if (chatId) {
       try {
         showToast('Uploading media snap...')
         const res = await sendChatMessage(chatId, fd, token)
@@ -1935,8 +2401,17 @@ export const MessagesPage: React.FC = () => {
                   : 'text-slate-300 cursor-not-allowed'
               }`}
             >
-              <MessageSquare className="w-3.5 h-3.5" />
-              <span>Chat {selectedFriendIds.length > 0 ? `(${selectedFriendIds.length})` : ''}</span>
+              {selectedFriendIds.length > 1 ? (
+                <>
+                  <Users className="w-3.5 h-3.5" />
+                  <span>Create Group ({selectedFriendIds.length})</span>
+                </>
+              ) : (
+                <>
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  <span>Chat {selectedFriendIds.length > 0 ? `(${selectedFriendIds.length})` : ''}</span>
+                </>
+              )}
             </button>
           </div>
 
@@ -1962,6 +2437,22 @@ export const MessagesPage: React.FC = () => {
               )}
             </div>
           </div>
+
+          {/* Group Name input when selecting multiple friends (07_files group creation) */}
+          {selectedFriendIds.length > 1 && (
+            <div className="px-4 pb-2.5 shrink-0 animate-fade-in">
+              <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200/80 rounded-full px-3.5 py-2">
+                <Users className="w-4 h-4 text-emerald-600 shrink-0" />
+                <input
+                  type="text"
+                  value={groupNameInput}
+                  onChange={(e) => setGroupNameInput(e.target.value)}
+                  placeholder="Enter group name (e.g. Ludo Squad)..."
+                  className="bg-transparent text-xs text-slate-800 placeholder-slate-400 focus:outline-none flex-1 font-semibold"
+                />
+              </div>
+            </div>
+          )}
 
           {/* Grouped Friends List with Checkboxes and Direct Message Button */}
           <div className="flex-1 overflow-y-auto px-1 pb-4">
@@ -2109,12 +2600,31 @@ export const MessagesPage: React.FC = () => {
                 <ChevronLeft className="w-6 h-6 stroke-[2.5]" />
               </button>
 
-              {/* Bitmoji / Avatar with status ring */}
-              <div className="relative w-10 h-10 rounded-full bg-[#f2f4f7] ring-2 ring-[#0099ff]/20 flex items-center justify-center shrink-0 overflow-hidden shadow-xs">
+              {/* Avatar with status ring */}
+              <div
+                onClick={() => {
+                  if (activeChat.isGroup) setIsGroupInfoOpen(true)
+                }}
+                className={`relative w-10 h-10 rounded-full bg-[#f2f4f7] ring-2 ring-[#0099ff]/20 flex items-center justify-center shrink-0 overflow-hidden shadow-xs ${
+                  activeChat.isGroup ? 'cursor-pointer hover:ring-emerald-400' : ''
+                }`}
+              >
                 {activeChat.isSystem ? (
                   <div className="w-full h-full bg-[#00c59e] flex items-center justify-center">
                     <Bell className="w-5 h-5 text-white fill-white" />
                   </div>
+                ) : activeChat.isGroup ? (
+                  activeChat.avatarImage ? (
+                    <img
+                      src={activeChat.avatarImage}
+                      alt={activeChat.name}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-tr from-emerald-500 to-teal-700 flex items-center justify-center text-white">
+                      <Users className="w-5 h-5" />
+                    </div>
+                  )
                 ) : activeChat.avatarImage ? (
                   <img
                     src={activeChat.avatarImage}
@@ -2126,23 +2636,53 @@ export const MessagesPage: React.FC = () => {
                     {activeChat.avatarInitial || 'U'}
                   </span>
                 )}
-                {/* Active status dot */}
-                <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-[#00dfb6] ring-2 ring-white" />
+                {/* Active status dot for direct chat */}
+                {!activeChat.isGroup && (
+                  <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-[#00dfb6] ring-2 ring-white" />
+                )}
               </div>
 
-              {/* Identity & Friendship Status */}
-              <div className="flex flex-col min-w-0">
-                <span className="text-[15px] font-extrabold text-slate-900 truncate max-w-[190px] leading-tight flex items-center gap-1.5">
+              {/* Identity & Friendship / Group Status */}
+              <div
+                className="flex flex-col min-w-0"
+                onClick={() => {
+                  if (activeChat.isGroup) setIsGroupInfoOpen(true)
+                }}
+              >
+                <span className={`text-[15px] font-extrabold text-slate-900 truncate max-w-[190px] leading-tight flex items-center gap-1.5 ${
+                  activeChat.isGroup ? 'cursor-pointer hover:text-emerald-700' : ''
+                }`}>
                   {activeChat.name}
                   {activeChat.isSystem && (
                     <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 shrink-0">
                       Official
                     </span>
                   )}
+                  {activeChat.isGroup && (
+                    <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 shrink-0">
+                      Group
+                    </span>
+                  )}
                 </span>
                 <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400">
                   {activeChat.isSystem ? (
                     <span className="text-emerald-600 font-medium">Verified System Channel</span>
+                  ) : activeChat.isGroup ? (
+                    groupRecordingUser ? (
+                      <span className="text-rose-500 font-bold flex items-center gap-1 animate-pulse">
+                        <Radio className="w-3 h-3 animate-spin" />
+                        {groupRecordingUser} recording voice snap...
+                      </span>
+                    ) : groupTypingUser ? (
+                      <span className="text-emerald-500 font-bold flex items-center gap-1 animate-pulse">
+                        {groupTypingUser} typing...
+                      </span>
+                    ) : (
+                      <span className="text-emerald-600 font-medium cursor-pointer flex items-center gap-1">
+                        <Users className="w-3 h-3" />
+                        <span>{activeChat.memberCount || 1} members • Tap for details</span>
+                      </span>
+                    )
                   ) : isOtherRecordingVoice ? (
                     <span className="text-rose-500 font-bold flex items-center gap-1 animate-pulse">
                       <Radio className="w-3 h-3 animate-spin" />
@@ -2172,7 +2712,7 @@ export const MessagesPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Right: Options menu (Unfriend, Block, Close) */}
+            {/* Right: Options menu (Group Info, Leave, Unfriend, Block, Close) */}
             <div className="relative flex items-center gap-2 text-slate-400">
               <button
                 type="button"
@@ -2190,22 +2730,48 @@ export const MessagesPage: React.FC = () => {
                     onClick={() => setIsChatMenuOpen(false)}
                   />
                   <div className="absolute right-0 top-10 z-50 w-48 bg-white rounded-2xl shadow-xl border border-slate-100 py-1.5 animate-scale-in text-xs font-semibold text-slate-700">
-                    <button
-                      type="button"
-                      onClick={handleUnfriendFromChat}
-                      className="w-full px-3.5 py-2.5 flex items-center gap-2 hover:bg-rose-50 text-rose-600 transition-colors cursor-pointer text-left"
-                    >
-                      <UserMinus className="w-4 h-4 text-rose-500" />
-                      <span>Remove Friend</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleBlockFromChat}
-                      className="w-full px-3.5 py-2.5 flex items-center gap-2 hover:bg-rose-50 text-rose-600 transition-colors cursor-pointer text-left"
-                    >
-                      <Ban className="w-4 h-4 text-rose-500" />
-                      <span>Block Player</span>
-                    </button>
+                    {activeChat.isGroup ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsGroupInfoOpen(true)
+                            setIsChatMenuOpen(false)
+                          }}
+                          className="w-full px-3.5 py-2.5 flex items-center gap-2 hover:bg-emerald-50 text-emerald-700 transition-colors cursor-pointer text-left"
+                        >
+                          <Info className="w-4 h-4 text-emerald-600" />
+                          <span>Group Info & Members</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleLeaveActiveGroup}
+                          className="w-full px-3.5 py-2.5 flex items-center gap-2 hover:bg-rose-50 text-rose-600 transition-colors cursor-pointer text-left"
+                        >
+                          <LogOut className="w-4 h-4 text-rose-500" />
+                          <span>Leave Group</span>
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={handleUnfriendFromChat}
+                          className="w-full px-3.5 py-2.5 flex items-center gap-2 hover:bg-rose-50 text-rose-600 transition-colors cursor-pointer text-left"
+                        >
+                          <UserMinus className="w-4 h-4 text-rose-500" />
+                          <span>Remove Friend</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleBlockFromChat}
+                          className="w-full px-3.5 py-2.5 flex items-center gap-2 hover:bg-rose-50 text-rose-600 transition-colors cursor-pointer text-left"
+                        >
+                          <Ban className="w-4 h-4 text-rose-500" />
+                          <span>Block Player</span>
+                        </button>
+                      </>
+                    )}
                     <div className="my-1 border-t border-slate-100" />
                     <button
                       type="button"
@@ -2324,7 +2890,7 @@ export const MessagesPage: React.FC = () => {
                       isMe ? 'text-[#0099ff] pr-1.5' : 'text-[#ff2a6d] pl-1.5'
                     }`}
                   >
-                    {isMe ? 'ME' : activeChat.name}
+                    {isMe ? 'ME' : (activeChat.isGroup ? (m.sender_name || 'Member') : activeChat.name)}
                   </span>
 
                   {/* Message Bubble */}
@@ -2828,6 +3394,134 @@ export const MessagesPage: React.FC = () => {
                 className="w-full py-2 px-4 rounded-xl text-slate-400 hover:text-slate-600 font-medium text-xs transition-colors cursor-pointer"
               >
                 Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Group Info & Member Management Modal (from 07_files) */}
+      {isGroupInfoOpen && activeChat?.isGroup && (
+        <div className="fixed inset-0 z-[80] flex flex-col bg-white max-w-[471px] mx-auto animate-slide-up shadow-2xl">
+          {/* Header */}
+          <div className="px-4 py-3 flex items-center justify-between border-b border-slate-100 bg-white shrink-0">
+            <button
+              type="button"
+              onClick={() => setIsGroupInfoOpen(false)}
+              className="p-1 -ml-1 text-slate-800 hover:text-black cursor-pointer"
+            >
+              <ChevronLeft className="w-6 h-6 stroke-[2.5]" />
+            </button>
+            <h2 className="text-base font-bold text-slate-900">Group Details</h2>
+            <div className="w-6" />
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+            {/* Group Banner & Identity */}
+            <div className="flex flex-col items-center text-center">
+              <div className="w-20 h-20 rounded-full bg-gradient-to-tr from-emerald-500 via-teal-500 to-indigo-600 flex items-center justify-center text-white shadow-md mb-2 overflow-hidden">
+                {activeChat.avatarImage ? (
+                  <img src={activeChat.avatarImage} alt={activeChat.name} className="w-full h-full object-cover" />
+                ) : (
+                  <Users className="w-10 h-10 text-white" />
+                )}
+              </div>
+              <h3 className="text-lg font-black text-slate-900">{activeChat.name}</h3>
+              {activeChat.description && (
+                <p className="text-xs text-slate-500 mt-1 max-w-[280px]">{activeChat.description}</p>
+              )}
+              <span className="mt-1 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[11px] font-bold border border-emerald-200">
+                {groupDetails?.members?.length || activeChat.memberCount || 1} Members
+              </span>
+            </div>
+
+            {/* Invite Code Box */}
+            {(activeChat.inviteCode || groupDetails?.group?.invite_code) && (
+              <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3 flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Group Invite Code</span>
+                  <span className="text-sm font-mono font-bold text-slate-800">
+                    {groupDetails?.group?.invite_code || activeChat.inviteCode}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const code = groupDetails?.group?.invite_code || activeChat.inviteCode
+                    if (code) {
+                      navigator.clipboard.writeText(code)
+                      showToast('Invite code copied! 📋')
+                    }
+                  }}
+                  className="px-3 py-1.5 rounded-full bg-[#00dfb6] hover:bg-[#00c59e] active:scale-95 text-[#06201a] font-extrabold text-xs flex items-center gap-1 transition-all cursor-pointer shadow-xs"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>Copy</span>
+                </button>
+              </div>
+            )}
+
+            {/* Member List */}
+            <div className="space-y-2">
+              <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">Members</h4>
+              <div className="divide-y divide-slate-100 bg-slate-50/60 rounded-2xl border border-slate-100 overflow-hidden">
+                {(groupDetails?.members || []).length > 0 ? (
+                  groupDetails.members.map((member: any) => {
+                    const isOwner = member.role === 'owner'
+                    const isAdmin = member.role === 'admin'
+                    return (
+                      <div key={member.id || member.user_id} className="px-3.5 py-2.5 flex items-center justify-between">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-9 h-9 rounded-full bg-slate-200 overflow-hidden shrink-0 flex items-center justify-center">
+                            {member.profile_image ? (
+                              <img src={normalizeImageUrl(member.profile_image)} alt={member.name} className="w-full h-full object-cover" />
+                            ) : (
+                              <span className="text-xs font-bold text-slate-600">
+                                {member.name ? member.name.charAt(0).toUpperCase() : 'U'}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex flex-col min-w-0">
+                            <span className="text-xs font-bold text-slate-800 truncate">{member.name}</span>
+                            <span className="text-[10px] text-slate-400">Joined {new Date(member.joined_at || Date.now()).toLocaleDateString()}</span>
+                          </div>
+                        </div>
+
+                        <div className="shrink-0 flex items-center gap-1">
+                          {isOwner ? (
+                            <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-black flex items-center gap-0.5 border border-amber-200">
+                              <Crown className="w-3 h-3 text-amber-600 fill-amber-500" />
+                              <span>Owner</span>
+                            </span>
+                          ) : isAdmin ? (
+                            <span className="px-2 py-0.5 rounded-full bg-sky-100 text-sky-800 text-[10px] font-black flex items-center gap-0.5 border border-sky-200">
+                              <Shield className="w-3 h-3 text-sky-600" />
+                              <span>Admin</span>
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full bg-slate-200 text-slate-600 text-[10px] font-bold">
+                              Member
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })
+                ) : (
+                  <div className="p-4 text-center text-xs text-slate-400">Loading members...</div>
+                )}
+              </div>
+            </div>
+
+            {/* Leave Group Button */}
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={handleLeaveActiveGroup}
+                className="w-full py-2.5 rounded-2xl bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-rose-200"
+              >
+                <LogOut className="w-4 h-4" />
+                <span>Leave Group Chat</span>
               </button>
             </div>
           </div>

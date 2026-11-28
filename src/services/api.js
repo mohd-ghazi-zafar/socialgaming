@@ -15,6 +15,7 @@ export const BLOCK_BASE_URL = `${API_BASE_ROOT}/api/blockroute`
 export const CHAT_BASE_URL = `${API_BASE_ROOT}/api/chatroute`
 export const MOMENT_BASE_URL = `${API_BASE_ROOT}/api/momentroute`
 export const BANNER_BASE_URL = `${API_BASE_ROOT}/api/banner`
+export const GROUP_BASE_URL = `${API_BASE_ROOT}/api/groupchat`
 
 export function normalizeImageUrl(url) {
   if (!url || typeof url !== 'string') return null
@@ -988,6 +989,326 @@ export async function getActiveBanners(token) {
   const data = await res.json().catch(() => ({}))
   if (!res.ok) {
     throw new Error(data.message || `Failed to fetch banners (${res.status})`)
+  }
+  return data
+}
+
+/* ============================================================================
+ * 8. MULTI-USER GROUP CHAT SYSTEM (/api/groupchat - from 07_files)
+ * ============================================================================ */
+
+/**
+ * 1. Create a new group chat
+ * POST /api/groupchat/create
+ */
+export async function createGroupChat(formDataOrJson, token) {
+  const isFormData = formDataOrJson instanceof FormData
+  const headers = { ...authHeader(token) }
+  if (!isFormData) headers['Content-Type'] = 'application/json'
+
+  const res = await fetch(`${GROUP_BASE_URL}/create`, {
+    method: 'POST',
+    headers,
+    body: isFormData ? formDataOrJson : JSON.stringify(formDataOrJson),
+  })
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(data.message || `Failed to create group (${res.status})`)
+  }
+  return data
+}
+
+/**
+ * 2. Get all groups for current user
+ * GET /api/groupchat/my-groups
+ */
+export async function viewMyGroups(token) {
+  const res = await fetch(`${GROUP_BASE_URL}/my-groups`, {
+    method: 'GET',
+    headers: { ...authHeader(token) },
+  })
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(data.message || `Failed to fetch groups (${res.status})`)
+  }
+  return data
+}
+
+/**
+ * 3. View group details & member roster
+ * GET /api/groupchat/:groupId
+ */
+export async function viewGroupInfo(groupId, token) {
+  const res = await fetch(`${GROUP_BASE_URL}/${groupId}`, {
+    method: 'GET',
+    headers: { ...authHeader(token) },
+  })
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(data.message || `Failed to fetch group info (${res.status})`)
+  }
+  return data
+}
+
+/**
+ * 4. Update group settings or info
+ * PUT /api/groupchat/:groupId/update
+ */
+export async function updateGroupInfo(groupId, formDataOrJson, token) {
+  const isFormData = formDataOrJson instanceof FormData
+  const headers = { ...authHeader(token) }
+  if (!isFormData) headers['Content-Type'] = 'application/json'
+
+  const res = await fetch(`${GROUP_BASE_URL}/${groupId}/update`, {
+    method: 'PUT',
+    headers,
+    body: isFormData ? formDataOrJson : JSON.stringify(formDataOrJson),
+  })
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(data.message || `Failed to update group (${res.status})`)
+  }
+  return data
+}
+
+/**
+ * 5. Add members to group
+ * POST /api/groupchat/:groupId/members
+ */
+export async function addGroupMembers(groupId, userIds, token) {
+  const res = await fetch(`${GROUP_BASE_URL}/${groupId}/members`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeader(token),
+    },
+    body: JSON.stringify({ user_ids: userIds }),
+  })
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(data.message || `Failed to add members (${res.status})`)
+  }
+  return data
+}
+
+/**
+ * 6. Remove member or leave group
+ * DELETE /api/groupchat/:groupId/members/:userId or POST /api/groupchat/:groupId/leave
+ */
+export async function removeGroupMember(groupId, userId, token) {
+  const res = await fetch(`${GROUP_BASE_URL}/${groupId}/members/${userId}`, {
+    method: 'DELETE',
+    headers: { ...authHeader(token) },
+  })
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(data.message || `Failed to remove member (${res.status})`)
+  }
+  return data
+}
+
+export async function leaveGroup(groupId, token) {
+  const res = await fetch(`${GROUP_BASE_URL}/${groupId}/leave`, {
+    method: 'POST',
+    headers: { ...authHeader(token) },
+  })
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(data.message || `Failed to leave group (${res.status})`)
+  }
+  return data
+}
+
+/**
+ * 7. Change member role (admin / member)
+ * PUT /api/groupchat/:groupId/members/:userId/role
+ */
+export async function changeGroupMemberRole(groupId, userId, role, token) {
+  const res = await fetch(`${GROUP_BASE_URL}/${groupId}/members/${userId}/role`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeader(token),
+    },
+    body: JSON.stringify({ role }),
+  })
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(data.message || `Failed to update member role (${res.status})`)
+  }
+  return data
+}
+
+/**
+ * 8. Join group via invite code
+ * POST /api/groupchat/join/:inviteCode
+ */
+export async function joinGroupViaInvite(inviteCode, token) {
+  const res = await fetch(`${GROUP_BASE_URL}/join/${inviteCode}`, {
+    method: 'POST',
+    headers: { ...authHeader(token) },
+  })
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(data.message || `Failed to join group (${res.status})`)
+  }
+  return data
+}
+
+/**
+ * 9. Send group message (text, media, voice)
+ * POST /api/groupchat/:groupId/send
+ */
+export async function sendGroupMessage(groupId, formDataOrJson, token) {
+  const isFormData = formDataOrJson instanceof FormData
+  const headers = { ...authHeader(token) }
+  if (!isFormData) headers['Content-Type'] = 'application/json'
+
+  const res = await fetch(`${GROUP_BASE_URL}/${groupId}/send`, {
+    method: 'POST',
+    headers,
+    body: isFormData ? formDataOrJson : JSON.stringify(formDataOrJson),
+  })
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(data.message || `Failed to send group message (${res.status})`)
+  }
+  return data
+}
+
+/**
+ * 10. View group message history
+ * GET /api/groupchat/:groupId/messages
+ */
+export async function viewGroupHistory(groupId, token, limit = 50, offset = 0) {
+  const res = await fetch(`${GROUP_BASE_URL}/${groupId}/messages?limit=${limit}&offset=${offset}`, {
+    method: 'GET',
+    headers: { ...authHeader(token) },
+  })
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(data.message || `Failed to fetch group messages (${res.status})`)
+  }
+  return data
+}
+
+/**
+ * 11. Mark group messages as read
+ * PUT /api/groupchat/:groupId/read
+ */
+export async function markGroupMessagesRead(groupId, token) {
+  const res = await fetch(`${GROUP_BASE_URL}/${groupId}/read`, {
+    method: 'PUT',
+    headers: { ...authHeader(token) },
+  })
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(data.message || `Failed to mark group read (${res.status})`)
+  }
+  return data
+}
+
+/**
+ * 12. Search messages in group
+ * GET /api/groupchat/:groupId/search?q=...
+ */
+export async function searchGroupMessages(groupId, query, token) {
+  const res = await fetch(`${GROUP_BASE_URL}/${groupId}/search?q=${encodeURIComponent(query)}`, {
+    method: 'GET',
+    headers: { ...authHeader(token) },
+  })
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(data.message || `Failed to search group messages (${res.status})`)
+  }
+  return data
+}
+
+/**
+ * 13. React to group message
+ * PUT /api/groupchat/message/:messageId/react
+ */
+export async function reactToGroupMessage(messageId, emoji, token) {
+  const res = await fetch(`${GROUP_BASE_URL}/message/${messageId}/react`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeader(token),
+    },
+    body: JSON.stringify({ emoji }),
+  })
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(data.message || `Failed to react to group message (${res.status})`)
+  }
+  return data
+}
+
+/**
+ * 14. Edit group message
+ * PUT /api/groupchat/message/:messageId/edit
+ */
+export async function editGroupMessage(messageId, content, token) {
+  const res = await fetch(`${GROUP_BASE_URL}/message/${messageId}/edit`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeader(token),
+    },
+    body: JSON.stringify({ content }),
+  })
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(data.message || `Failed to edit group message (${res.status})`)
+  }
+  return data
+}
+
+/**
+ * 15. Toggle pin group message
+ * PUT /api/groupchat/message/:messageId/pin
+ */
+export async function pinGroupMessage(messageId, token) {
+  const res = await fetch(`${GROUP_BASE_URL}/message/${messageId}/pin`, {
+    method: 'PUT',
+    headers: { ...authHeader(token) },
+  })
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(data.message || `Failed to pin group message (${res.status})`)
+  }
+  return data
+}
+
+/**
+ * 16. Remove group message (delete for everyone)
+ * DELETE /api/groupchat/message/:messageId
+ */
+export async function removeGroupMessage(messageId, token) {
+  const res = await fetch(`${GROUP_BASE_URL}/message/${messageId}`, {
+    method: 'DELETE',
+    headers: { ...authHeader(token) },
+  })
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(data.message || `Failed to delete group message (${res.status})`)
   }
   return data
 }

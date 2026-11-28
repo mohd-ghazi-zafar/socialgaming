@@ -209,3 +209,61 @@ export function disconnectChatSocket() {
     currentConnectedUserId = null
   }
 }
+
+/* ============================================================================
+ * GROUP CHAT SOCKET.IO EVENTS (from 07_files)
+ * ============================================================================ */
+
+/**
+ * Joins a specific group chat socket room
+ */
+export function joinGroupRoom(groupId: number | string) {
+  if (!groupId) return
+  const s = getChatSocket()
+  s.emit('join_group', groupId)
+}
+
+/**
+ * Leaves a specific group chat socket room
+ */
+export function leaveGroupRoom(groupId: number | string) {
+  if (!groupId) return
+  const s = getChatSocket()
+  s.emit('leave_group', groupId)
+}
+
+/**
+ * Emits typing indicator to group members
+ */
+export function emitGroupTyping(groupId: number | string, senderId: number | string, senderName: string) {
+  if (!groupId || !senderId) return
+  const s = getChatSocket()
+  s.emit('group_typing', { group_id: groupId, sender_id: senderId, sender_name: senderName })
+}
+
+/**
+ * Emits stop typing indicator to group members
+ */
+export function emitGroupStopTyping(groupId: number | string, senderId: number | string) {
+  if (!groupId || !senderId) return
+  const s = getChatSocket()
+  s.emit('group_stop_typing', { group_id: groupId, sender_id: senderId })
+}
+
+/**
+ * Emits voice recording indicator to group members
+ */
+export function emitGroupRecordingVoice(groupId: number | string, senderId: number | string, senderName: string) {
+  if (!groupId || !senderId) return
+  const s = getChatSocket()
+  s.emit('group_recording_voice', { group_id: groupId, sender_id: senderId, sender_name: senderName })
+}
+
+/**
+ * Emits stop voice recording indicator to group members
+ */
+export function emitGroupStopRecordingVoice(groupId: number | string, senderId: number | string) {
+  if (!groupId || !senderId) return
+  const s = getChatSocket()
+  s.emit('group_stop_recording_voice', { group_id: groupId, sender_id: senderId })
+}
