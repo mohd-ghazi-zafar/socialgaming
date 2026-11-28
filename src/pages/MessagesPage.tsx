@@ -285,6 +285,7 @@ export const MessagesPage: React.FC = () => {
     try {
       await unfollowUser(activeChat.userId, token)
       showToast(`Removed ${activeChat.name} from friends`)
+      setFriendsList((prev) => prev.filter((f) => f.id !== activeChat.userId))
       setAllDbUsers((prev) => prev.filter((f) => f.id !== activeChat.userId))
       setIsChatMenuOpen(false)
     } catch (err: any) {
@@ -301,6 +302,7 @@ export const MessagesPage: React.FC = () => {
     try {
       await blockUser(activeChat.userId, token)
       showToast(`Blocked ${activeChat.name}`)
+      setFriendsList((prev) => prev.filter((f) => f.id !== activeChat.userId))
       setAllDbUsers((prev) => prev.filter((f) => f.id !== activeChat.userId))
       setActiveChat(null)
       setIsChatMenuOpen(false)
